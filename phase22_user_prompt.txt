@@ -1,0 +1,1158 @@
+<USER_REQUEST>
+# TUKLAS AI — PHASE 22
+
+## TEACHER MATERIAL INTELLIGENCE, DOCUMENT UNDERSTANDING & GROUNDED AI TUTOR
+
+You are continuing the EXISTING Tuklas AI project.
+
+DO NOT create a new project.
+
+DO NOT rebuild the application from scratch.
+
+DO NOT replace the existing AI Tutor.
+
+DO NOT remove existing functionality.
+
+DO NOT redesign the UI unnecessarily.
+
+DO NOT break Phases 1–21.
+
+Build Phase 22 ON TOP OF the existing architecture.
+
+---
+
+# 1. CURRENT SYSTEM STATE
+
+Phase 21 has been completed.
+
+Current verified capabilities:
+
+* AI lesson awareness: PASS
+* AI question generation: PASS
+* AI conversational behavior: PASS
+* Socratic behavior: PASS
+* Mistake-aware tutoring: PASS
+* Adaptive tutoring: PASS
+* Mastery-aware tutoring: PASS
+* Teacher material intelligence: PASS
+* YouTube/Mathisipan AI integrity: PASS
+* Conversation continuity: PASS
+* Voice/text context consistency: PASS
+* Student isolation: PASS
+* Teacher isolation: PASS
+* Fallback behavior: PASS
+* Production persistence: PASS
+* Question correctness: PASS
+* TypeScript: PASS
+* Build: PASS
+* Phase 21 AI tests: PASS
+
+Phase 21 currently has:
+
+325/325 automated assertions passing.
+
+However, Phase 21 identified a major real functionality gap:
+
+PDF/DOCX binary text extraction is NOT IMPLEMENTED.
+
+The system can upload and store teacher materials, but the AI cannot reliably extract and understand the actual text inside raw PDF/DOCX files.
+
+This is the primary target of Phase 22.
+
+---
+
+# 2. PHASE 22 MAIN GOAL
+
+Transform Tuklas AI from:
+
+Teacher uploads material
+↓
+Material is stored
+↓
+Teacher provides notes/content manually
+↓
+AI uses those notes
+
+into:
+
+Teacher uploads lesson materials
+↓
+Tuklas extracts authorized textual content
+↓
+Content is cleaned and structured
+↓
+Content is linked to the correct lesson
+↓
+AI understands the lesson materials
+↓
+AI Tutor uses the materials as grounding context
+↓
+AI generates lesson-specific questions
+↓
+AI identifies student misconceptions
+↓
+AI gives Socratic guidance
+↓
+AI adapts future questions and explanations
+↓
+AI helps the student progress toward mastery
+
+The AI must NOT simply retrieve random information.
+
+The AI must be grounded in the actual teacher-published lesson.
+
+---
+
+# 3. SUPPORTED TEACHER MATERIALS
+
+Implement reliable text extraction for:
+
+1. PDF
+2. DOCX
+
+Do NOT require OCR initially unless the uploaded document contains images/scanned pages.
+
+For normal text-based PDFs:
+
+Use a reliable PDF text extraction library.
+
+For DOCX:
+
+Use a reliable DOCX text extraction library.
+
+Before installing anything:
+
+Inspect package.json and existing dependencies.
+
+Prefer established libraries that work reliably with the existing Node.js/TypeScript architecture.
+
+Do not add unnecessary dependencies.
+
+---
+
+# 4. DOCUMENT PROCESSING PIPELINE
+
+Implement this pipeline:
+
+Teacher Upload
+↓
+Validate file
+↓
+Validate MIME type
+↓
+Validate file size
+↓
+Store original file/reference
+↓
+Extract text
+↓
+Normalize text
+↓
+Remove unnecessary whitespace
+↓
+Preserve headings
+↓
+Preserve mathematical notation where possible
+↓
+Split into logical chunks
+↓
+Associate chunks with lesson
+↓
+Persist extracted content
+↓
+Generate document metadata
+↓
+Make content available to AI Tutor
+↓
+Make content available to question generation
+
+---
+
+# 5. SECURITY REQUIREMENTS
+
+Never execute uploaded files.
+
+Never treat uploaded documents as code.
+
+Reject unsupported file types.
+
+Reject dangerous MIME spoofing where practical.
+
+Enforce the existing file size limit.
+
+Do not expose internal storage paths.
+
+Do not expose database credentials.
+
+Do not expose API keys.
+
+Do not expose authentication tokens.
+
+Do not allow Student users to upload or replace teacher materials.
+
+Do not allow Student users to access another teacher's private materials.
+
+Teachers may only modify materials belonging to lessons they are authorized to edit.
+
+Administrators retain appropriate administrative access.
+
+---
+
+# 6. DOCUMENT DATA MODEL
+
+Reuse the existing lesson/resource architecture wherever possible.
+
+Do NOT create unnecessary duplicate lesson models.
+
+If the existing LessonResource model can represent documents, extend it carefully.
+
+The system should be able to associate:
+
+* lessonId
+* resourceId
+* resourceType
+* filename
+* MIME type
+* source
+* file size
+* extraction status
+* extraction error
+* extracted text
+* chunk count
+* createdAt
+* updatedAt
+* addedBy
+
+Use existing conventions and naming from the project.
+
+Do not invent a parallel storage architecture if the existing architecture can be extended.
+
+---
+
+# 7. EXTRACTION STATUS
+
+Implement clear states such as:
+
+PENDING
+PROCESSING
+READY
+FAILED
+
+The exact naming should follow existing project conventions if equivalent states already exist.
+
+The teacher interface must clearly show:
+
+Processing...
+
+Ready
+
+or
+
+Extraction failed — please upload again or provide lesson text.
+
+Never pretend extraction succeeded when it did not.
+
+---
+
+# 8. DOCUMENT PREVIEW
+
+Teacher should be able to see:
+
+File name
+File type
+Extraction status
+Character/word count where appropriate
+Number of extracted sections/chunks
+Preview of extracted text
+
+Example:
+
+## Teacher Material
+
+Grade 7 Integers.pdf
+
+Status:
+READY
+
+Extracted:
+12,450 characters
+18 sections
+
+Preview:
+"An integer is a whole number..."
+
+The preview must come from the actual extracted document.
+
+Do NOT use fake placeholder text.
+
+---
+
+# 9. LESSON MATERIAL LINKING
+
+Every extracted document must be connected to the correct lesson.
+
+Example:
+
+MATATAG Grade 7
+↓
+Term 1
+↓
+Unit
+↓
+Understanding Integers
+↓
+Teacher Materials
+├── Lesson Notes
+├── PDF
+├── DOCX
+├── Mathisipan Video
+└── Other teacher resources
+
+The AI Tutor must know which materials belong to the current lesson.
+
+---
+
+# 10. AI GROUNDING ARCHITECTURE
+
+This is one of the most important requirements.
+
+When a student asks:
+
+"Why is -5 smaller than -2?"
+
+The AI should use the current lesson context.
+
+When the student asks:
+
+"Can you explain this based on our lesson?"
+
+The AI should use the teacher-published lesson material.
+
+The AI should prioritize:
+
+1. Current lesson content
+2. Teacher-provided materials
+3. Extracted PDF/DOCX content
+4. Approved lesson resources
+5. Student's current practice/question
+6. Student's previous mistakes
+7. Student mastery state
+8. General mathematical knowledge only when necessary
+
+The AI must not pretend that it read material it could not actually access.
+
+---
+
+# 11. CONTEXT BUILDING
+
+Create or extend the existing lesson context service.
+
+The context should be able to include:
+
+* lesson title
+* lesson objectives
+* lesson content blocks
+* examples
+* definitions
+* formulas
+* teacher notes
+* extracted document chunks
+* approved video metadata
+* practice questions
+* current question
+* student's answer
+* previous mistakes
+* adaptive recommendation
+* mastery state
+
+Do NOT send the entire database to Gemini.
+
+Do NOT send unnecessary student information.
+
+Only provide the minimum relevant educational context.
+
+---
+
+# 12. CONTEXT RELEVANCE
+
+Do not blindly concatenate every document.
+
+Implement a relevance mechanism.
+
+For example:
+
+Student asks:
+"Why do we change subtraction into addition?"
+
+Retrieve content related to:
+
+* subtraction of integers
+* additive inverse
+* integer operations
+* relevant teacher material sections
+
+Student asks:
+
+"What is an integer?"
+
+Retrieve:
+
+* integer definition
+* number system section
+* current lesson explanation
+
+The context should be relevant to the student's question.
+
+---
+
+# 13. DOCUMENT CHUNKING
+
+Create meaningful chunks.
+
+Do not split documents randomly if avoidable.
+
+Preserve:
+
+* headings
+* paragraphs
+* examples
+* definitions
+* mathematical expressions
+
+Example:
+
+Chunk 1
+Heading: Integers
+
+Content:
+"An integer is a whole number..."
+
+Chunk 2
+Heading: Comparing Integers
+
+Content:
+"On a number line, numbers farther to the right..."
+
+Chunk 3
+Heading: Examples
+
+Content:
+"-5 < -2 because..."
+
+Each chunk should retain its lesson/resource relationship.
+
+---
+
+# 14. AI TUTOR COMMUNICATION
+
+This is critical.
+
+The goal is NOT merely:
+
+Student:
+"I don't understand."
+
+AI:
+"Let's take it step by step."
+
+Student:
+"I still don't understand."
+
+AI:
+"Let's take it step by step."
+
+That repetitive behavior must be eliminated.
+
+The AI must maintain meaningful conversational state.
+
+It should recognize:
+
+* what the student asked
+* what the student already understood
+* what explanation was already given
+* what mistake was made
+* what strategy was attempted
+* what the student is confused about
+* what explanation failed
+* what should be tried next
+
+---
+
+# 15. CONVERSATIONAL ADAPTATION
+
+Example:
+
+Student:
+"I don't understand why -5 is smaller."
+
+AI:
+"Think about the number line. Which number is farther to the left, -5 or -2?"
+
+Student:
+"-5."
+
+AI:
+"Exactly. Since -5 is farther left, it has the smaller value. Now let's connect that to the idea of distance from zero."
+
+The second response MUST NOT repeat the first response.
+
+---
+
+# 16. PREVIOUS RESPONSE AWARENESS
+
+Before generating a response, provide the AI with a compact conversation summary.
+
+Include:
+
+* student's current goal
+* last question
+* last AI explanation
+* student's response
+* unresolved misconception
+* next teaching objective
+
+Example internal state:
+
+CURRENT_CONCEPT:
+Comparing negative integers
+
+STUDENT_UNDERSTANDING:
+Understands number-line direction
+
+MISCONCEPTION:
+Confuses absolute value with numerical value
+
+LAST_EXPLANATION:
+Number farther left is smaller
+
+STUDENT_RESPONSE:
+"But 5 is bigger than 2."
+
+NEXT_ACTION:
+Explain difference between magnitude and position without giving the answer directly.
+
+This should produce genuinely adaptive conversation.
+
+---
+
+# 17. DO NOT GIVE THE ANSWER
+
+Maintain the existing Socratic behavior.
+
+If student asks:
+
+"Just give me the answer."
+
+Do not simply provide the final answer.
+
+Instead:
+
+* acknowledge
+* identify the step they are stuck on
+* ask one useful question
+* provide a small hint if needed
+* gradually increase scaffolding
+
+Do not make the AI unnecessarily frustrating.
+
+The goal is:
+
+GUIDE → CHECK → SCAFFOLD → PRACTICE → UNDERSTAND
+
+not:
+
+REFUSE → REPEAT SAME MESSAGE
+
+---
+
+# 18. ADAPTIVE HINT LEVELS
+
+Use existing hint levels.
+
+Example:
+
+Level 1:
+Guiding question
+
+Level 2:
+Conceptual hint
+
+Level 3:
+Worked partial step
+
+Level 4:
+More explicit scaffold
+
+Only provide the amount of help needed.
+
+If the student demonstrates understanding, reduce scaffolding.
+
+If the student repeatedly struggles, increase scaffolding.
+
+---
+
+# 19. MISTAKE-AWARE TEACHING
+
+Connect the AI Tutor to the existing mistake analyzer.
+
+Example:
+
+Student repeatedly makes:
+
+SIGN_ERROR
+
+AI should recognize:
+
+"You've been getting the operation right, but the sign is where the mistake happens."
+
+Then give targeted practice.
+
+Do NOT merely say:
+
+"Be careful with your signs."
+
+Explain the specific misconception.
+
+---
+
+# 20. MASTERY-AWARE TEACHING
+
+Connect the AI Tutor to the existing mastery engine.
+
+If:
+
+MASTERED
+
+The AI should move toward:
+
+* extension
+* application
+* more challenging problems
+
+If:
+
+DEVELOPING
+
+The AI should:
+
+* reinforce the concept
+* provide targeted examples
+* practice the weak skill
+
+If:
+
+LEARNING
+
+The AI should:
+
+* simplify
+* scaffold
+* use concrete examples
+
+If:
+
+NOT_STARTED
+
+The AI should:
+
+* introduce the concept first
+
+Do not ask mastered students endless beginner questions.
+
+---
+
+# 21. AI QUESTION GENERATION
+
+Improve question generation using:
+
+Lesson
++
+Teacher materials
++
+Current concept
++
+Student mistakes
++
+Mastery
++
+Difficulty
++
+Previous questions
+
+Questions must NOT be random.
+
+They must be explainable:
+
+SOURCE:
+Teacher PDF → Comparing Integers → Section 2
+
+CONCEPT:
+Comparing negative integers
+
+DIFFICULTY:
+Developing
+
+REASON:
+Student previously made SIGN_ERROR
+
+---
+
+# 22. QUESTION DIVERSITY
+
+Prevent repeated questions.
+
+Track recent questions.
+
+Avoid generating:
+
+* same numbers
+* same wording
+* same scenario
+* same answer pattern
+
+unless repetition is intentionally used for remediation.
+
+When repetition is intentional, explain internally:
+
+REMEDIATION_REASON:
+Student needs reinforcement of sign comparison.
+
+---
+
+# 23. YOUTUBE / MATHISIPAN
+
+Maintain existing YouTube integrity rules.
+
+The AI must NOT claim:
+
+"I watched the Mathisipan video."
+
+unless actual authorized transcript/content access exists.
+
+The AI may use:
+
+* video title
+* description
+* teacher-provided notes
+* approved transcript if legitimately available
+
+Otherwise say:
+
+"Your lesson includes a Mathisipan video about this topic. Let's use the lesson material to work through the idea."
+
+Never hallucinate video content.
+
+---
+
+# 24. VOICE INTEGRATION
+
+The voice tutor must use the SAME educational context as text chat.
+
+Student says:
+
+"Why did we move left?"
+
+Voice → same AI Tutor context.
+
+Student then types:
+
+"I still don't understand."
+
+Text → same conversation context.
+
+The system must not create two disconnected tutors.
+
+VOICE
+↓
+CENTRAL AI CONTEXT
+↓
+TUTOR
+↓
+TEXT + VOICE RESPONSE
+
+---
+
+# 25. GEMINI + LOCAL FALLBACK
+
+Maintain existing Gemini integration.
+
+When Gemini is available:
+
+Use Gemini for richer contextual conversation.
+
+When Gemini fails:
+
+Use LocalTutorEngine.
+
+However, improve the local fallback so it does not repeatedly return identical responses.
+
+Local fallback should consider:
+
+* current concept
+* student response
+* previous response
+* mistake category
+* hint level
+* conversation turn
+
+Do not remove the fallback.
+
+---
+
+# 26. FAILURE HONESTY
+
+If document extraction fails:
+
+Do not tell the student:
+
+"I read your PDF."
+
+Instead:
+
+"The teacher's PDF is attached, but I couldn't extract its text. I can still help using the lesson content."
+
+If Gemini is unavailable:
+
+Do not pretend Gemini generated the answer.
+
+Use the existing local engine honestly.
+
+---
+
+# 27. TEACHER EXPERIENCE
+
+Teacher should be able to:
+
+1. Create/open lesson
+2. Upload PDF
+3. Upload DOCX
+4. Wait for extraction
+5. Preview extracted content
+6. Confirm material
+7. Publish lesson
+
+The teacher should know whether the AI can actually use the material.
+
+Show:
+
+AI Knowledge Status:
+
+✓ Lesson content
+✓ Teacher PDF
+✓ Teacher DOCX
+✓ Mathisipan video metadata
+✓ Practice questions
+
+---
+
+# 28. STUDENT EXPERIENCE
+
+When opening a lesson:
+
+Student sees:
+
+Lesson
+↓
+Learning content
+↓
+Teacher resources
+↓
+Mathisipan video
+↓
+AI Tutor
+↓
+Practice
+↓
+Mistake analysis
+↓
+Adaptive practice
+↓
+Mastery
+
+The AI Tutor should know what lesson the student is currently studying.
+
+---
+
+# 29. SOURCE TRANSPARENCY
+
+When appropriate, AI responses should internally track source attribution.
+
+Example:
+
+SOURCE:
+Lesson Content
+
+SOURCE:
+Teacher Material — Grade7_Integers.pdf
+
+SOURCE:
+Practice Question
+
+Do not expose unnecessary technical information to students.
+
+Teacher analytics may display:
+
+AI response grounded in:
+
+* Lesson content
+* Teacher PDF
+* Student mistake history
+
+---
+
+# 30. AI RESPONSE QUALITY REQUIREMENTS
+
+Every AI response should aim to contain:
+
+1. Recognition of student's current issue
+2. Relevant explanation or question
+3. One manageable next step
+4. Connection to the lesson when useful
+
+Avoid generic responses such as:
+
+"Let's take it step by step."
+
+unless followed by an actual useful step.
+
+Avoid repetitive:
+
+"Great job!"
+
+"Let's try another one!"
+
+without meaningful adaptation.
+
+---
+
+# 31. AUTOMATED TESTING
+
+Create:
+
+scripts/test-phase22-document-intelligence.ts
+
+and, if appropriate:
+
+scripts/test-phase22-ai-grounding.ts
+
+Test at minimum:
+
+DOCUMENT TESTS
+
+1. PDF upload
+2. PDF extraction
+3. DOCX upload
+4. DOCX extraction
+5. malformed file rejection
+6. unsupported file rejection
+7. file size limit
+8. extraction failure handling
+9. lesson association
+10. persistence
+
+AI TESTS
+
+11. AI retrieves lesson content
+12. AI retrieves teacher document content
+13. AI uses relevant document section
+14. AI does not claim inaccessible content
+15. AI does not hallucinate document content
+16. AI remembers previous response
+17. AI avoids identical repeated responses
+18. AI adapts to student mistake
+19. AI adapts to mastery
+20. AI generates lesson-specific questions
+21. AI avoids recent duplicate questions
+22. AI remains Socratic
+23. AI responds appropriately to "I don't know"
+24. AI responds differently after repeated confusion
+25. Voice and text share conversation context
+26. Student cannot access another student's material
+27. Student cannot modify teacher documents
+28. Unauthorized teacher cannot access another teacher's private material
+
+---
+
+# 32. REGRESSION TESTING
+
+Run ALL relevant existing tests.
+
+Do not only run Phase 22 tests.
+
+Run:
+
+Phase 12 security
+Phase 13 YouTube
+Phase 14 production
+Phase 15 mastery
+Phase 17 pilot
+Phase 18 evidence
+Phase 19 voice
+Phase 20 voice hardening
+Phase 21 AI quality
+Phase 21 learning companion
+
+No previous functionality may regress.
+
+---
+
+# 33. BUILD
+
+Run:
+
+npx tsc --noEmit
+
+npm run build
+
+Both must pass.
+
+---
+
+# 34. DATABASE VERIFICATION
+
+Verify extracted material survives:
+
+upload
+↓
+server restart
+↓
+login
+↓
+open lesson
+↓
+AI Tutor
+
+The AI must still be able to access the extracted content after restart.
+
+Do not rely on temporary in-memory storage for production educational content.
+
+---
+
+# 35. REAL BROWSER TEST
+
+Use the existing browser testing capability where available.
+
+Verify:
+
+Teacher:
+Login
+→ open lesson
+→ upload PDF
+→ extraction
+→ preview
+→ publish
+
+Student:
+Login
+→ open lesson
+→ ask AI about PDF material
+→ answer AI question
+→ make mistake
+→ receive adaptive guidance
+→ continue practice
+
+Test both:
+
+Text AI
+
+and
+
+Voice AI
+
+---
+
+# 36. IMPORTANT: DO NOT CLAIM 100%
+
+Do not report "100% working" simply because automated tests pass.
+
+Clearly separate:
+
+AUTOMATED VERIFIED
+REAL BROWSER VERIFIED
+NOT YET VERIFIED
+
+Especially for:
+
+* PDF/DOCX extraction
+* microphone
+* speech recognition
+* Gemini API
+* network failures
+* mobile browsers
+
+---
+
+# 37. FINAL VERIFICATION REPORT
+
+Return exactly:
+
+# TUKLAS AI — PHASE 22 FINAL VERIFICATION
+
+Document upload: PASS/FAIL
+PDF extraction: PASS/FAIL
+DOCX extraction: PASS/FAIL
+Document persistence: PASS/FAIL
+Lesson-material linking: PASS/FAIL
+AI document grounding: PASS/FAIL
+AI lesson grounding: PASS/FAIL
+AI conversational adaptation: PASS/FAIL
+Repeated-response prevention: PASS/FAIL
+Mistake-aware tutoring: PASS/FAIL
+Mastery-aware tutoring: PASS/FAIL
+Question generation: PASS/FAIL
+Question diversity: PASS/FAIL
+Socratic behavior: PASS/FAIL
+Voice/text context continuity: PASS/FAIL
+YouTube/Mathisipan integrity: PASS/FAIL
+Teacher authorization: PASS/FAIL
+Student authorization: PASS/FAIL
+Student isolation: PASS/FAIL
+Teacher isolation: PASS/FAIL
+Database persistence: PASS/FAIL
+TypeScript: PASS/FAIL
+Build: PASS/FAIL
+Regression tests: PASS/FAIL
+Real browser verification: PASS/PARTIAL/NOT_COMPLETED
+
+DOCUMENT INTELLIGENCE:
+IMPLEMENTED / PARTIAL / NOT_IMPLEMENTED
+
+AI LEARNING COMPANION:
+IMPLEMENTED / PARTIAL / NOT_IMPLEMENTED
+
+FINAL DECISION:
+
+READY_FOR_PHASE_23
+
+or
+
+READY_WITH_MINOR_FIXES
+
+or
+
+NOT_READY_FOR_PHASE_23
+
+IMPORTANT:
+
+Do not start Phase 23.
+
+Do not redesign Tuklas.
+
+Do not remove existing functionality.
+
+Do not fabricate test results.
+
+Only report functionality that was actually verified.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-03T10:34:33+08:00.
+
+The user's current state is as follows:
+Other open documents:
+- c:\Users\dwight\Downloads\tuklas-ai\vite.config.ts (LANGUAGE_UNSPECIFIED)
+- c:\Users\dwight\Downloads\tuklas-ai\src\components\ai\AITutorPanel.tsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\dwight\Downloads\tuklas-ai\scripts\test-phase21-ai-learning-companion.ts (LANGUAGE_UNSPECIFIED)
+- c:\Users\dwight\Downloads\tuklas-ai\src\lib\ai\context.ts (LANGUAGE_UNSPECIFIED)
+- c:\Users\dwight\Downloads\tuklas-ai\src\lib\ai\prompts.ts (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>

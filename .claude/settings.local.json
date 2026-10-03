@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const fs=require\\('fs'\\);const o=JSON.parse\\(fs.readFileSync\\('tasks/wwxm5ja5y.output','utf8'\\)\\).result;fs.mkdirSync\\('scratchpad',{recursive:true}\\);fs.writeFileSync\\('scratchpad/audit-report.md',o.report\\);fs.writeFileSync\\('scratchpad/audit-raw.json',JSON.stringify\\(o.raw,null,1\\)\\);console.log\\(o.report.length, o.raw.length\\)\")",
+      "Read(//c/Users/dwight/.claude/projects/c--Users-dwight-Downloads-tuklas-ai/memory/**)",
+      "Bash(echo \"- [Phase 22 readiness audit findings]\\(tuklas-audit-findings.md\\) — Phase 21 claims mostly simulated/broken; confirmed blockers with file:line\")",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(grep -E \"\\\\.env$|\\\\.env\\\\.|node_modules|dist/\")",
+      "Bash(git -c user.email=dwightellema02@gmail.com -c user.name=dwight commit -q -m 'Baseline snapshot before V2 rebuild \\(Phase 21 state, pre-audit\\) *)"
+    ]
+  }
+}
