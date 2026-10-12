@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local configuration and sandbox persistence
+.claude/
+data/
+*.local.json

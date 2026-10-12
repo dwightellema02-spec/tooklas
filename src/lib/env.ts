@@ -11,6 +11,7 @@
  */
 
 import "dotenv/config";
+import { validateAuthSecret } from "./auth/session";
 
 export interface EnvValidationResult {
   isValid: boolean;
@@ -26,17 +27,39 @@ export interface EnvValidationResult {
   };
 }
 
+const SUPPORTED_NON_PROD_ENVS = new Set(["development", "test"]);
+
 /**
  * Validates the runtime environment according to deployment target (Production vs Development/Testing).
- * In production mode, throws an Error if critical invariants are violated.
+ * In production mode or unknown environments, throws an Error if critical invariants are violated.
  */
 export function validateProductionEnv(opts?: { strict?: boolean }): EnvValidationResult {
-  const nodeEnv = process.env.NODE_ENV || "development";
+  const rawNodeEnv = process.env.NODE_ENV;
+  const nodeEnv = rawNodeEnv ? rawNodeEnv.trim().toLowerCase() : "unspecified";
+  const isExplicitDevOrTest = SUPPORTED_NON_PROD_ENVS.has(nodeEnv);
   const isProd = nodeEnv === "production";
-  const strict = opts?.strict ?? isProd;
+  
+  // Fail-closed: strict is true if explicitly set, if in production, or if NODE_ENV is unset/unrecognized
+  const strict = opts?.strict ?? (!isExplicitDevOrTest);
 
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  if (!rawNodeEnv) {
+    if (strict) {
+      errors.push(
+        "NODE_ENV is not set. The environment must be explicitly defined (production, development, or test)."
+      );
+    } else {
+      warnings.push("NODE_ENV is unset; defaulting to non-strict dev mode.");
+    }
+  } else if (!SUPPORTED_NON_PROD_ENVS.has(nodeEnv) && !isProd) {
+    if (strict) {
+      errors.push(
+        `Unsupported NODE_ENV="${rawNodeEnv}". Must be one of: production, development, or test.`
+      );
+    }
+  }
 
   // 1. DATABASE_URL Validation
   const dbUrl = process.env.DATABASE_URL?.trim();
@@ -59,16 +82,14 @@ export function validateProductionEnv(opts?: { strict?: boolean }): EnvValidatio
 
   // 2. AUTH_SECRET Validation
   const authSecret = process.env.AUTH_SECRET?.trim();
-  const hasAuthSecret = Boolean(authSecret && authSecret.length >= 32);
+  const secretValidation = validateAuthSecret(authSecret);
 
-  if (!hasAuthSecret) {
+  if (!secretValidation.isValid) {
     if (strict) {
-      errors.push(
-        "AUTH_SECRET is required in production and must be at least 32 characters for cryptographic HMAC-SHA256 session integrity."
-      );
+      errors.push(secretValidation.error || "Invalid AUTH_SECRET configuration.");
     } else {
       warnings.push(
-        "AUTH_SECRET is unset or shorter than 32 characters. Development fallback secret is active for local testing only."
+        `AUTH_SECRET warning: ${secretValidation.error || "Invalid secret."} Development fallback may be insecure.`
       );
     }
   }
@@ -107,7 +128,7 @@ export function validateProductionEnv(opts?: { strict?: boolean }): EnvValidatio
     warnings,
     status: {
       databaseConfigured: hasDbUrl,
-      authSecretConfigured: hasAuthSecret,
+      authSecretConfigured: secretValidation.isValid,
       geminiConfigured: hasGeminiKey,
       youtubeConfigured: hasYtKey,
       nodeEnv,

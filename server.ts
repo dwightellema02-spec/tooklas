@@ -32,14 +32,12 @@ import { validateDocumentMetadata, MAX_DOCUMENT_SIZE_BYTES } from "./src/lib/sto
 
 dotenv.config();
 
-// Verify production environment invariants at startup
+// Verify environment invariants at startup
 try {
   validateProductionEnv();
 } catch (envError: any) {
   console.error("ENVIRONMENT VALIDATION FAILED:", envError.message);
-  if (process.env.NODE_ENV === "production") {
-    process.exit(1);
-  }
+  process.exit(1);
 }
 
 const app = express();
