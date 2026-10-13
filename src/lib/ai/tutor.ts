@@ -129,7 +129,7 @@ export class AITutorService {
         userPrompt,
         maxTokens: 500,
         temperature: 0.3,
-        timeoutMs: 12000,
+        timeoutMs: 16000,
       });
     } catch (providerError) {
       console.warn("Primary AI provider failed, activating local pedagogical engine fallback:", providerError);

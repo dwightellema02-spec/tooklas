@@ -5,7 +5,7 @@ import type { AIProvider, TutorAIRequest, TutorAIResponseRaw } from "./types";
 
 export class GeminiAIProvider implements AIProvider {
   readonly name = "gemini";
-  readonly defaultModel = "gemini-3.8-flash";
+  readonly defaultModel = "gemini-3.5-flash";
   private ai: GoogleGenAI;
   private model: string;
 
@@ -20,35 +20,49 @@ export class GeminiAIProvider implements AIProvider {
 
   async generateTutorResponse(request: TutorAIRequest): Promise<TutorAIResponseRaw> {
     const timeoutMs = request.timeoutMs || 15000;
+    const modelsToTry = [this.model];
+    if (!modelsToTry.includes("gemini-3.5-flash")) {
+      modelsToTry.push("gemini-3.5-flash");
+    }
 
-    const generatePromise = this.ai.models.generateContent({
-      model: this.model,
-      contents: request.userPrompt,
-      config: {
-        systemInstruction: request.systemPrompt,
-        maxOutputTokens: request.maxTokens || 600,
-        temperature: request.temperature !== undefined ? request.temperature : 0.4,
-        responseMimeType: "application/json",
-      },
-    });
+    let lastError: any = null;
+    for (const modelToUse of modelsToTry) {
+      try {
+        const generatePromise = this.ai.models.generateContent({
+          model: modelToUse,
+          contents: request.userPrompt,
+          config: {
+            systemInstruction: request.systemPrompt,
+            maxOutputTokens: request.maxTokens || 600,
+            temperature: request.temperature !== undefined ? request.temperature : 0.4,
+            responseMimeType: "application/json",
+          },
+        });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("AI Tutor request timed out after 15 seconds.")), timeoutMs)
-    );
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`AI Tutor request timed out after ${timeoutMs / 1000} seconds.`)), timeoutMs)
+        );
 
-    const response = await Promise.race([generatePromise, timeoutPromise]);
-    const responseText = response.text || "";
+        const response = await Promise.race([generatePromise, timeoutPromise]);
+        const responseText = response.text || "";
 
-    return {
-      text: responseText,
-      tokenUsage: {
-        promptTokens: response.usageMetadata?.promptTokenCount,
-        completionTokens: response.usageMetadata?.candidatesTokenCount,
-        totalTokens: response.usageMetadata?.totalTokenCount,
-      },
-      provider: this.name,
-      model: this.model,
-    };
+        return {
+          text: responseText,
+          tokenUsage: {
+            promptTokens: response.usageMetadata?.promptTokenCount,
+            completionTokens: response.usageMetadata?.candidatesTokenCount,
+            totalTokens: response.usageMetadata?.totalTokenCount,
+          },
+          provider: this.name,
+          model: modelToUse,
+        };
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Gemini model ${modelToUse} failed:`, err.message || err);
+      }
+    }
+
+    throw lastError || new Error("All Gemini models failed.");
   }
 }
 
@@ -63,38 +77,66 @@ export class LocalTutorEngine implements AIProvider {
 
   async generateTutorResponse(request: TutorAIRequest): Promise<TutorAIResponseRaw> {
     const prompt = request.userPrompt.toLowerCase();
+    const queryMatch = request.userPrompt.match(/Student Query:\s*"([^"]*)"/i);
+    const studentQuery = queryMatch ? queryMatch[1].toLowerCase().trim() : "";
+
+    const isFilipino =
+      request.systemPrompt.includes("Language Mandate: Natural Filipino") ||
+      request.userPrompt.includes("MANDATORY LANGUAGE DIRECTIVE: The student requested explanations in FILIPINO") ||
+      studentQuery.includes("tagalog") ||
+      studentQuery.includes("filipino") ||
+      studentQuery.includes("paliwanag sa tagalog") ||
+      studentQuery.includes("sa tagalog") ||
+      studentQuery.includes("in tagalog") ||
+      studentQuery.includes("mag-tagalog") ||
+      prompt.includes('student query: "tagalog') ||
+      prompt.includes('student query: "in tagalog') ||
+      prompt.includes('student query: "paliwanag sa tagalog');
+
     let responseType = "HINT";
     let message = "";
     let guidingQuestion = "";
     let hintLevel = 1;
-    let encouragement = "You're building real mathematical understanding step by step.";
-    let nextStep = "Think about the signs and positions on the number line.";
+    let encouragement = isFilipino
+      ? "Bumubuo ka ng tunay na pag-unawa sa matematika hakbang-hakbang."
+      : "You're building real mathematical understanding step by step.";
+    let nextStep = isFilipino
+      ? "Isipin ang mga sign at posisyon sa number line."
+      : "Think about the signs and positions on the number line.";
     let detectedIssue = "NONE";
     let suggestedAction = "CONTINUE_LESSON";
     let sourceGrounding: string[] = ["Curriculum: MATATAG Grade 7 Mathematics"];
 
     // 1. Prompt Injection & Off-topic Safety (Part 23)
     if (
-      prompt.includes("ignore previous") ||
-      prompt.includes("system prompt") ||
-      prompt.includes("act as dan") ||
-      prompt.includes("api_key") ||
-      prompt.includes("database_url") ||
-      prompt.includes("passwordhash") ||
-      prompt.includes("celebrity") ||
-      prompt.includes("movie") ||
-      prompt.includes("song") ||
-      prompt.includes("recipe") ||
-      prompt.includes("weather")
+      studentQuery.includes("ignore previous") ||
+      studentQuery.includes("system prompt") ||
+      studentQuery.includes("act as dan") ||
+      studentQuery.includes("api_key") ||
+      studentQuery.includes("database_url") ||
+      studentQuery.includes("passwordhash") ||
+      studentQuery.includes("celebrity") ||
+      studentQuery.includes("movie") ||
+      studentQuery.includes("song") ||
+      studentQuery.includes("recipe") ||
+      studentQuery.includes("weather")
     ) {
       return {
         text: JSON.stringify({
           responseType: "REDIRECT",
-          message: "Let's focus on your Grade 7 mathematics lesson. I am your Tuklas AI learning companion, here to help you master integers and mathematical problem-solving!",
-          guidingQuestion: "Would you like to continue with your current math problem?",
+          message: isFilipino
+            ? "Maging nakatutok tayo sa iyong aralin sa Grade 7 Matematika. Ako ang iyong Tuklas AI kasama sa pag-aaral, nandito upang tulungan kang maging mahusay sa integers!"
+            : "Let's focus on your Grade 7 mathematics lesson. I am your Tuklas AI learning companion, here to help you master integers and mathematical problem-solving!",
+          guidingQuestion: isFilipino
+            ? "Nais mo bang magpatuloy sa iyong kasalukuyang problema sa math?"
+            : "Would you like to continue with your current math problem?",
           hintLevel: 1,
-          encouragement: "Let's solve math problems together!",
-          nextStep: "Return to the current mathematical problem or lesson.",
+          encouragement: isFilipino
+            ? "Magkasama nating lutasin ang mga problema sa matematika!"
+            : "Let's solve math problems together!",
+          nextStep: isFilipino
+            ? "Bumalik sa kasalukuyang problema o aralin."
+            : "Return to the current mathematical problem or lesson.",
           detectedIssue: "NONE",
           suggestedAction: "CONTINUE_LESSON",
           sourceGrounding: ["System Safety Guard"],
@@ -106,13 +148,16 @@ export class LocalTutorEngine implements AIProvider {
 
     // 1b. Explicit Tagalog / Filipino Request Handling
     if (
-      prompt.includes("tagalog") ||
-      prompt.includes("filipino") ||
-      prompt.includes("paliwanag sa tagalog") ||
-      prompt.includes("ipaliwanag sa tagalog") ||
-      prompt.includes("sa tagalog") ||
-      prompt.includes("in tagalog") ||
-      prompt.includes("mag-tagalog")
+      isFilipino &&
+      (
+        studentQuery === "tagalog" ||
+        studentQuery === "in tagalog" ||
+        studentQuery.includes("tagalog") ||
+        studentQuery.includes("filipino") ||
+        studentQuery.includes("paliwanag") ||
+        prompt.includes('student query: "tagalog') ||
+        prompt.includes('student query: "in tagalog')
+      )
     ) {
       return {
         text: JSON.stringify({
@@ -133,11 +178,31 @@ export class LocalTutorEngine implements AIProvider {
 
     // 2. Direct Answer Requests (Part 10 - Socratic refusal)
     if (
-      prompt.includes("give me the answer") ||
-      prompt.includes("what is the answer") ||
-      prompt.includes("just tell me") ||
-      prompt.includes("tell me the answer")
+      studentQuery.includes("give me the answer") ||
+      studentQuery.includes("what is the answer") ||
+      studentQuery.includes("just tell me") ||
+      studentQuery.includes("tell me the answer") ||
+      studentQuery.includes("ibigay ang sagot") ||
+      studentQuery.includes("ano ang sagot")
     ) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            type: "GUIDING_QUESTION",
+            responseType: "GUIDING_QUESTION",
+            message: "Nais kong tulungan kang matuklasan kung paano ito lutasin nang mag-isa upang maging tiwala ka sa anumang pagsusulit! Gawin natin ang unang hakbang nang magkasama.",
+            guidingQuestion: "Ano ang napapansin mo sa mga numero at ang kanilang mga sign sa problemang ito?",
+            hintLevel: 1,
+            encouragement: "Kaya mo itong lutasin nang hakbang-hakbang.",
+            nextStep: "Tukuyin muna ang sign ng bawat numero.",
+            detectedIssue: "CONFUSION",
+            suggestedAction: "RETRY",
+            sourceGrounding: ["Patakaran sa Akademikong Integridad"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           type: "GUIDING_QUESTION",
@@ -157,11 +222,33 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 3. Mathisipan / YouTube Video Integrity (Part 6)
-    if (
-      prompt.includes("mathisipan") ||
-      prompt.includes("youtube") ||
-      prompt.includes("video")
-    ) {
+    // CRITICAL FIX: Only trigger if the student SPECIFICALLY asked about the video or YouTube!
+    // Do NOT trigger if "video" is merely present in the system curriculum/lesson metadata!
+    const studentAskedAboutVideo =
+      studentQuery.includes("video") ||
+      studentQuery.includes("youtube") ||
+      studentQuery.includes("mathisipan") ||
+      studentQuery.includes("pinanood") ||
+      studentQuery.includes("napanood");
+
+    if (studentAskedAboutVideo) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Batay sa mga tala ng aralin at paliwanag ng guro sa Tuklas, tinatalakay sa paksang ito kung paano inilalagay ang integers sa number line at paano nag-uugnayan ang magkaibang signs. (Paalala: Bilang AI companion, hindi ko napanood nang direkta ang YouTube video dahil walang machine-readable transcript, ngunit matutulungan kita sa lahat ng konsepto sa iyong aralin!)",
+            guidingQuestion: "Aling bahagi ng mga konsepto ng integer ang nais mong tuklasin nang magkasama?",
+            hintLevel: 1,
+            encouragement: "Ang pag-ugnay ng mga tala sa aralin sa iyong pagsasanay ay nagpapatibay ng kaalaman.",
+            nextStep: "Suriin ang bahagi ng mga pangunahing ideya sa iyong aralin.",
+            detectedIssue: "NONE",
+            suggestedAction: "REVIEW_LESSON",
+            sourceGrounding: ["Mga Tala sa Aralin", "Metadata ng Video"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
@@ -181,17 +268,25 @@ export class LocalTutorEngine implements AIProvider {
 
     // 4a. Failure Honesty for Failed Document Extraction (Phase 22)
     if (
-      (prompt.includes("pdf") || prompt.includes("docx") || prompt.includes("document")) &&
-      (prompt.includes("fail") || prompt.includes("corrupt") || prompt.includes("unreadable") || prompt.includes("error") || prompt.includes("couldn't extract"))
+      (studentQuery.includes("pdf") || studentQuery.includes("docx") || studentQuery.includes("document")) &&
+      (studentQuery.includes("fail") || studentQuery.includes("corrupt") || studentQuery.includes("unreadable") || studentQuery.includes("error") || studentQuery.includes("couldn't extract"))
     ) {
       return {
         text: JSON.stringify({
           responseType: "CLARIFICATION",
-          message: "The teacher's PDF is attached, but I couldn't extract its text. I can still help using the lesson content.",
-          guidingQuestion: "Would you like to review the lesson concepts and examples together?",
+          message: isFilipino
+            ? "Nakalakip ang PDF ng guro, ngunit hindi ko makuha ang teksto nito. Makakatulong pa rin ako gamit ang nilalaman ng aralin."
+            : "The teacher's PDF is attached, but I couldn't extract its text. I can still help using the lesson content.",
+          guidingQuestion: isFilipino
+            ? "Nais mo bang suriin natin ang mga konsepto at halimbawa sa aralin nang magkasama?"
+            : "Would you like to review the lesson concepts and examples together?",
           hintLevel: 1,
-          encouragement: "We can still master this topic using all the published lesson content!",
-          nextStep: "Explore the lesson content blocks and key ideas.",
+          encouragement: isFilipino
+            ? "Magagawa pa rin nating matutuhan ang paksang ito gamit ang lahat ng nalathalang aralin!"
+            : "We can still master this topic using all the published lesson content!",
+          nextStep: isFilipino
+            ? "Tuklasin ang mga nilalaman ng aralin at pangunahing ideya."
+            : "Explore the lesson content blocks and key ideas.",
           detectedIssue: "NONE",
           suggestedAction: "CONTINUE_LESSON",
           sourceGrounding: ["Document Extraction Status: FAILED", "Grounded Lesson Content"],
@@ -202,21 +297,41 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 4b. Teacher-provided material / notes / Extracted Document Intelligence (Phase 22)
-    if (
-      prompt.includes("teacher document") ||
-      prompt.includes("teacher's document") ||
-      prompt.includes("from the pdf") ||
-      prompt.includes("in the pdf") ||
-      prompt.includes("teacher's pdf") ||
-      prompt.includes("teacher pdf") ||
-      prompt.includes("teacher docx") ||
-      prompt.includes("extracted document") ||
-      prompt.includes("material section") ||
-      prompt.includes("teacher note") ||
-      prompt.includes("teacher's note") ||
-      prompt.includes("teacher material") ||
-      prompt.includes("teacher-provided")
-    ) {
+    const studentAskedAboutTeacherMaterial =
+      studentQuery.includes("teacher document") ||
+      studentQuery.includes("teacher's document") ||
+      studentQuery.includes("from the pdf") ||
+      studentQuery.includes("in the pdf") ||
+      studentQuery.includes("teacher's pdf") ||
+      studentQuery.includes("teacher pdf") ||
+      studentQuery.includes("teacher docx") ||
+      studentQuery.includes("extracted document") ||
+      studentQuery.includes("material section") ||
+      studentQuery.includes("teacher note") ||
+      studentQuery.includes("teacher's note") ||
+      studentQuery.includes("teacher material") ||
+      studentQuery.includes("teacher-provided") ||
+      studentQuery.includes("dokumento ng guro") ||
+      studentQuery.includes("tala ng guro");
+
+    if (studentAskedAboutTeacherMaterial) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Batay sa dokumentong ini-upload ng iyong guro, ang integers ay nakaayos sa number line kung saan ang anumang numero sa kanan ay mas malaki kaysa sa numero sa kaliwa. Binibigyang-diin din ng guro na ang pagbabawas ng integer ay katumbas ng pagdaragdag ng additive inverse ($a - b = a + (-b)$), at ang paggamit ng zero-pairs ($+1 + -1 = 0$) ay nagpapadali sa pagsasama ng mga terms.",
+            guidingQuestion: "Paano nakakatulong ang tuntunin ng additive inverse upang muling isulat ang problemang iyong nilulutas?",
+            hintLevel: 1,
+            encouragement: "Ang pag-ugnay ng mga tala ng iyong guro sa pagsasanay ay nagpapabilis ng iyong pagkatuto.",
+            nextStep: "Isulat muli ang pagbabawas bilang pagdaragdag ng kabaligtarang integer.",
+            detectedIssue: "NONE",
+            suggestedAction: "CONTINUE_LESSON",
+            sourceGrounding: ["Teacher Material: Extracted Document Chunks", "DepEd MATATAG Lesson Grounding"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
@@ -235,13 +350,33 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 5. Why is my answer wrong? / Sign errors (e.g. -7 + 3 = -10, -5 + 3 = -8)
-    if (
-      (prompt.includes("-7") && prompt.includes("3") && (prompt.includes("-10") || prompt.includes("wrong"))) ||
-      (prompt.includes("-5") && prompt.includes("3") && prompt.includes("-8")) ||
-      prompt.includes("sign error") ||
-      prompt.includes("why is my answer wrong") ||
-      prompt.includes("why is that wrong")
-    ) {
+    const studentAskedAboutWrongAnswer =
+      studentQuery.includes("why is my answer wrong") ||
+      studentQuery.includes("why is that wrong") ||
+      studentQuery.includes("bakit mali") ||
+      studentQuery.includes("mali ba") ||
+      studentQuery.includes("sign error") ||
+      (studentQuery.includes("-7") && studentQuery.includes("3") && (studentQuery.includes("-10") || studentQuery.includes("wrong") || studentQuery.includes("mali"))) ||
+      (studentQuery.includes("-5") && studentQuery.includes("3") && (studentQuery.includes("-8") || studentQuery.includes("wrong") || studentQuery.includes("mali")));
+
+    if (studentAskedAboutWrongAnswer) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "FEEDBACK",
+            message: "Nauunawaan ko kung saan nagkaroon ng kalituhan. Kapag nagdaragdag ng mga numerong may *magkaibang sign*, tulad ng $-7$ at $+3$, HINDI natin pinagsasama ang kanilang laki upang maging $-10$. Sa halip, ibawas ang mas maliit na absolute value mula sa mas malaki ($7 - 3 = 4$), at kunin ang sign ng numerong may mas malaking absolute value ($-7$). Kaya $-7 + 3 = -4$.",
+            guidingQuestion: "Ano ang absolute value ng $-7$ kumpara sa absolute value ng $+3$?",
+            hintLevel: 2,
+            encouragement: "Ang pagkilala sa mga tuntunin ng sign ay malaking hakbang tungo sa pagiging mahusay sa integers!",
+            nextStep: "Kalkulahin muli gamit ang tuntunin ng pagbabawas ng absolute value.",
+            detectedIssue: "SIGN_ERROR",
+            suggestedAction: "RETRY",
+            sourceGrounding: ["DepEd MATATAG Integer Addition Rules"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "FEEDBACK",
@@ -260,12 +395,32 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 5b. Why Did We Move Left? / Directionality Reasoning (Part 9 Situation G & Part 14)
-    if (
-      prompt.includes("why did you move left") ||
-      prompt.includes("why move left") ||
-      prompt.includes("why do we move left") ||
-      prompt.includes("why to the left")
-    ) {
+    const studentAskedAboutMoveLeft =
+      studentQuery.includes("why did you move left") ||
+      studentQuery.includes("why move left") ||
+      studentQuery.includes("why do we move left") ||
+      studentQuery.includes("why to the left") ||
+      studentQuery.includes("bakit lumipat sa kaliwa") ||
+      studentQuery.includes("bakit pakaliwa");
+
+    if (studentAskedAboutMoveLeft) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Lumilipat tayo sa kaliwa dahil ang mga negatibong numero ay kumakatawan sa mga halagang mas mababa sa zero. Sa horizontal number line, ang mga positibong numero ay pakanan (lumalaki), habang ang mga negatibong numero o pagbabawas ay pakaliwa (lumiliit).",
+            guidingQuestion: "Kung ang pagdaragdag ng positibong numero ay pakanan, aling direksyon naman ang pagdaragdag ng negatibong numero?",
+            hintLevel: 1,
+            encouragement: "Ang pag-ugnay ng paggalaw sa number line sa mga sign ng matematika ay nagbibigay ng malalim na pang-unawa!",
+            nextStep: "Sundan ang paggalaw simula sa iyong unang punto.",
+            detectedIssue: "NONE",
+            suggestedAction: "CONTINUE_LESSON",
+            sourceGrounding: ["Horizontal Number Line Model", "Directionality Convention"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
@@ -284,13 +439,32 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 5c. Partially Correct Answer (Part 9 Situation B)
-    if (
-      prompt.includes("partially correct") ||
-      prompt.includes("got the number right") ||
-      prompt.includes("unsure of the sign") ||
-      prompt.includes("i got 3 but") ||
-      prompt.includes("is it positive or negative")
-    ) {
+    const studentPartiallyCorrect =
+      studentQuery.includes("partially correct") ||
+      studentQuery.includes("got the number right") ||
+      studentQuery.includes("unsure of the sign") ||
+      studentQuery.includes("i got 3 but") ||
+      studentQuery.includes("is it positive or negative") ||
+      studentQuery.includes("positibo ba o negatibo");
+
+    if (studentPartiallyCorrect) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "FEEDBACK",
+            message: "Nakuha mo nang tama ang bahagi ng kalkulasyon! Ang pagkuha ng diperensya sa pagitan ng mga absolute value ($9 - 6 = 3$) ay ganap na tama. Ngayon, upang matukoy kung ito ay $+3$ o $-3$, suriin kung aling numero ang may mas malaking absolute value: $|+9| = 9$ o $|-6| = 6$.",
+            guidingQuestion: "Dahil ang $9 > 6$, aling sign ang mananaig: $+9$ o $-6$?",
+            hintLevel: 1,
+            encouragement: "Kalahati na ng sagot ang tama — ang iyong arithmetic ay tumpak!",
+            nextStep: "Ilapat ang sign ng numerong may mas malaking absolute value.",
+            detectedIssue: "SIGN_ERROR",
+            suggestedAction: "RETRY",
+            sourceGrounding: ["Absolute Value Sign Rules"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "FEEDBACK",
@@ -309,12 +483,32 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 5d. Asking About a Previous Mistake (Part 9 Situation K)
-    if (
-      prompt.includes("previous mistake") ||
-      prompt.includes("what did i do wrong before") ||
-      prompt.includes("earlier mistake") ||
-      prompt.includes("my last attempt")
-    ) {
+    const studentAskedAboutPreviousMistake =
+      studentQuery.includes("previous mistake") ||
+      studentQuery.includes("what did i do wrong before") ||
+      studentQuery.includes("earlier mistake") ||
+      studentQuery.includes("my last attempt") ||
+      studentQuery.includes("dating mali") ||
+      studentQuery.includes("nakaraang pagkakamali");
+
+    if (studentAskedAboutPreviousMistake) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "FEEDBACK",
+            message: "Sa iyong nakaraang pagsubok, pinagsama mo agad ang laki ng mga numero sa halip na ibawas ang mga ito. Kapag magkaiba ang sign, isipin ito bilang tagisan sa pagitan ng positibo at negatibo: kinakansela nila ang isa't isa sa halip na magsanib.",
+            guidingQuestion: "Paano nakakatulong ang pag-iisip ng magkaibang sign bilang nagkakanselahan sa pagpili ng tamang operasyon?",
+            hintLevel: 2,
+            encouragement: "Ang pagkatuto mula sa ating mga nakaraang pagsubok ay ang pinakamabilis na paraan tungo sa kahusayan!",
+            nextStep: "Ilapat ang pagbabawas ng absolute values sa iyong susunod na pagsubok.",
+            detectedIssue: "SIGN_ERROR",
+            suggestedAction: "RETRY",
+            sourceGrounding: ["Student Attempt History & Mistake Analysis"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "FEEDBACK",
@@ -333,12 +527,31 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 6. Calculation Error (e.g., student makes an arithmetic mistake)
-    if (
-      prompt.includes("calculation error") ||
-      prompt.includes("calculation") ||
-      prompt.includes("arithmetic error") ||
-      prompt.includes("miscalculated")
-    ) {
+    const studentAskedAboutCalculationError =
+      studentQuery.includes("calculation error") ||
+      studentQuery.includes("arithmetic error") ||
+      studentQuery.includes("miscalculated") ||
+      studentQuery.includes("maling kwenta") ||
+      studentQuery.includes("maling kalkula");
+
+    if (studentAskedAboutCalculationError) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "FEEDBACK",
+            message: "Ang iyong pangangatwiran sa mga sign ay tama, ngunit nagkaroon ng kaunting pagkakamali sa arithmetic. Suriin nating muli ang pagbabawas.",
+            guidingQuestion: "Ano ang diperensya sa pagitan ng dalawang absolute value kapag maingat mong kinalkula?",
+            hintLevel: 1,
+            encouragement: "Tama ang iyong pamamaraan; isang mabilis na pagtiyak sa kalkulasyon ay magbibigay sa iyo ng eksaktong sagot.",
+            nextStep: "Muling suriin ang pangunahing hakbang ng arithmetic.",
+            detectedIssue: "CALCULATION_ERROR",
+            suggestedAction: "RETRY",
+            sourceGrounding: ["Arithmetic Verification"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "FEEDBACK",
@@ -357,23 +570,26 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 7. Conceptual Misunderstanding (e.g., -5 vs -2, thinking -5 > -2 because 5 > 2)
-    if (
-      (prompt.includes("-5") && prompt.includes("-2")) ||
-      prompt.includes("conceptual") ||
-      prompt.includes("magnitude")
-    ) {
-      if (prompt.includes("easier") || prompt.includes("simplify") || prompt.includes("counters")) {
+    const studentAskedAboutConceptualComparison =
+      (studentQuery.includes("-5") && studentQuery.includes("-2")) ||
+      studentQuery.includes("alin ang mas malaki") ||
+      studentQuery.includes("which is greater") ||
+      studentQuery.includes("is -5 greater than -2") ||
+      studentQuery.includes("mas malaki ba ang -5");
+
+    if (studentAskedAboutConceptualComparison) {
+      if (isFilipino) {
         return {
           text: JSON.stringify({
-            responseType: "EXPLANATION",
-            message: "Let's picture temperature or a debt to make this easy: having $-\\$2$ debt is better than having $-\\$5$ debt! On a number line, $-2$ is closer to zero and to the right of $-5$. Numbers to the right are always greater.",
-            guidingQuestion: "Would you rather be at $-2$ degrees or $-5$ degrees if you want warmer weather?",
+            responseType: "HINT",
+            message: "Sa mga negatibong numero, ang numerong mas malapit sa zero sa horizontal number line ang may mas malaking halaga. Halimbawa, $|-2| = 2$ at $|-5| = 5$. Dahil ang $-2$ ay nasa kanan ng $-5$, ang $-2 > -5$.",
+            guidingQuestion: "Aling numero ang mas pakanan sa number line: $-5$ o $-2$?",
             hintLevel: 1,
-            encouragement: "Visualizing with temperature or debt makes negative numbers click!",
-            nextStep: "Compare which value is farther right on the horizontal line.",
+            encouragement: "Isipin ang isang number line sa iyong isipan!",
+            nextStep: "Hanapin ang posisyon ng parehong numero kaugnay ng zero.",
             detectedIssue: "CONCEPTUAL_MISUNDERSTANDING",
             suggestedAction: "TRY_SIMILAR",
-            sourceGrounding: ["Number Line Concrete Representation"],
+            sourceGrounding: ["DepEd MATATAG M7NS-Ia-1"],
           }),
           provider: this.name,
           model: this.defaultModel,
@@ -397,12 +613,31 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 8. Prerequisite Gap (e.g., student doesn't know absolute value)
-    if (
-      prompt.includes("prerequisite") ||
-      prompt.includes("what is an absolute value") ||
-      prompt.includes("what is absolute value") ||
-      prompt.includes("don't know absolute value")
-    ) {
+    const studentAskedAboutAbsoluteValue =
+      studentQuery.includes("what is an absolute value") ||
+      studentQuery.includes("what is absolute value") ||
+      studentQuery.includes("don't know absolute value") ||
+      studentQuery.includes("ano ang absolute value") ||
+      studentQuery.includes("kahulugan ng absolute value");
+
+    if (studentAskedAboutAbsoluteValue) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Ang **absolute value** ng isang numero, na isinusulat bilang $|x|$, ay ang layo nito mula sa zero sa number line. Dahil ang distansya ay hindi kailanman negatibo, ang absolute value ay palaging positibo o zero. Halimbawa, $|-7| = 7$ at $|+3| = 3$.",
+            guidingQuestion: "Ngayong alam mo nang laging positibo ang distansya mula sa zero, ano ang $|-12|$?",
+            hintLevel: 1,
+            encouragement: "Ang pagpapatibay sa kasanayang ito ay magpapadali sa mga operasyon ng integers.",
+            nextStep: "Subukang hanapin ang layo mula sa zero para sa isang negatibong integer.",
+            detectedIssue: "PREREQUISITE_GAP",
+            suggestedAction: "REVIEW_PREREQUISITE",
+            sourceGrounding: ["Prerequisite Skill: Absolute Value (skl_01)"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
@@ -421,12 +656,31 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 9. Repeated Mistake (Student repeated the same error)
-    if (
-      prompt.includes("repeated") ||
-      prompt.includes("tried again and got") ||
-      prompt.includes("same mistake") ||
-      prompt.includes("still got")
-    ) {
+    const studentRepeatedMistake =
+      studentQuery.includes("tried again and got") ||
+      studentQuery.includes("same mistake") ||
+      studentQuery.includes("still got") ||
+      studentQuery.includes("ulit na mali") ||
+      studentQuery.includes("paulit-ulit");
+
+    if (studentRepeatedMistake) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Dahil nagdudulot pa rin ng kalituhan ang paraang iyan, magpalit tayo ng estratehiya at gumamit ng **integer counters**! Isipin na mayroon kang 7 pulang counter (kumakatawan sa $-7$) at 3 asul na counter (kumakatawan sa $+3$). Ang bawat pares ng isang pula at isang asul ay bumubuo ng zero-pair at nagkakanselahan.",
+            guidingQuestion: "Matapos magkansela ang 3 pares, ilang pulang counter ang natitira?",
+            hintLevel: 2,
+            encouragement: "Ang pagpapalit ng representasyon ay ginagawa ng magagaling na mag-aaral kapag nahihirapan!",
+            nextStep: "Bilangin ang mga natitirang counter at tukuyin ang kanilang sign.",
+            detectedIssue: "CONCEPTUAL_MISUNDERSTANDING",
+            suggestedAction: "TRY_EASIER",
+            sourceGrounding: ["Interactive Counter Model (Lesson Block 2)"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
@@ -445,13 +699,33 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 10. Student Solves Correctly (Constructive praise + next challenge)
-    if (
-      prompt.includes("i got -4") ||
-      prompt.includes("the answer is -4") ||
-      prompt.includes("i solved it") ||
-      prompt.includes("correct answer") ||
-      prompt.includes("got it right")
-    ) {
+    const studentSolvedCorrectly =
+      studentQuery.includes("i got -4") ||
+      studentQuery.includes("the answer is -4") ||
+      studentQuery.includes("i solved it") ||
+      studentQuery.includes("correct answer") ||
+      studentQuery.includes("got it right") ||
+      studentQuery.includes("nakuha ko ang tamang sagot") ||
+      studentQuery.includes("tama ba ang -4");
+
+    if (studentSolvedCorrectly) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "FEEDBACK",
+            message: "Tama iyan: $-7 + 3 = -4$. Maingat mong ibinawas ang mga absolute value ($7 - 3 = 4$) at inilapat ang negatibong sign mula sa $-7$ dahil ito ang may mas malaking absolute value.",
+            guidingQuestion: "Handa ka na bang subukan ang ganitong pangangatwiran sa susunod na problema?",
+            hintLevel: 1,
+            encouragement: "Matatag at tumpak ang iyong pangangatwiran sa mga sign.",
+            nextStep: "Subukan ang susunod na tanong sa iyong aralin.",
+            detectedIssue: "NONE",
+            suggestedAction: "CONTINUE_LESSON",
+            sourceGrounding: ["Integer Addition Concept Mastery"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "FEEDBACK",
@@ -470,12 +744,32 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 11. Request for Another Worked Example (Part 2 item 11)
-    if (
-      prompt.includes("another example") ||
-      prompt.includes("worked example") ||
-      prompt.includes("show me an example") ||
-      prompt.includes("different numbers")
-    ) {
+    const studentRequestedExample =
+      studentQuery.includes("another example") ||
+      studentQuery.includes("worked example") ||
+      studentQuery.includes("show me an example") ||
+      studentQuery.includes("different numbers") ||
+      studentQuery.includes("halimbawa") ||
+      studentQuery.includes("magpakita ng halimbawa");
+
+    if (studentRequestedExample) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXAMPLE",
+            message: "Narito ang isang halimbawa na may magkaibang numero:\n\n**Problema:** Hanapin ang $(-9) + (+4)$.\n*Hakbang 1:* Tukuyin ang signs: magkaibang sign ($-9$ at $+4$).\n*Hakbang 2:* Paghambingin ang absolute values: $|-9| = 9$ at $|+4| = 4$.\n*Hakbang 3:* Ibawas ang mas maliit sa mas malaki: $9 - 4 = 5$.\n*Hakbang 4:* Panatilihin ang sign ng may mas malaking absolute value ($-9$ ay negatibo), kaya $-5$.\n\n**Resulta:** $(-9) + (+4) = -5$.",
+            guidingQuestion: "Pansinin kung paano natin ibinawas ang 4 mula sa 9. Paano ito maihahambing sa iyong nilulutas?",
+            hintLevel: 2,
+            encouragement: "Ang pagsusuri sa mga halimbawa ay nagpapatibay ng paraan sa iyong isipan!",
+            nextStep: "Ilapat ang 4 na hakbang na ito sa iyong kasalukuyang problema.",
+            detectedIssue: "NONE",
+            suggestedAction: "TRY_SIMILAR",
+            sourceGrounding: ["Lesson 2 Worked Examples"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXAMPLE",
@@ -494,12 +788,33 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 12. Request for Easier Explanation (Part 2 item 12)
-    if (
-      prompt.includes("easier explanation") ||
-      prompt.includes("more simply") ||
-      prompt.includes("simpler") ||
-      prompt.includes("too hard")
-    ) {
+    const studentRequestedEasier =
+      studentQuery.includes("easier explanation") ||
+      studentQuery.includes("more simply") ||
+      studentQuery.includes("simpler") ||
+      studentQuery.includes("too hard") ||
+      studentQuery.includes("mas madali") ||
+      studentQuery.includes("mas simple") ||
+      studentQuery.includes("masyadong mahirap");
+
+    if (studentRequestedEasier) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Gawin nating napakasimple gamit ang ideya ng **pera**:\n• Ang positibong numero ay perang hawak mo ($+\\$10$).\n• Ang negatibong numero ay perang utang mo ($-\\$7$).\n\nKung may utang kang $\\$7$ at kumita ka ng $\\$3$, nabayaran mo ang bahagi ng utang. May utang ka pa ring $\\$4$, na katumbas ng $-4$!",
+            guidingQuestion: "Mas malinaw ba ang mga sign kapag iniisip ang perang hawak kumpara sa perang utang?",
+            hintLevel: 1,
+            encouragement: "Ang pag-ugnay sa totoong buhay ay nagpapadali sa mga tuntunin ng matematika!",
+            nextStep: "Isipin ang iyong problema sa konteksto ng utang at bayad.",
+            detectedIssue: "CONFUSION",
+            suggestedAction: "TRY_EASIER",
+            sourceGrounding: ["DepEd Real-World Mathematics Application"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
@@ -518,13 +833,32 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 13. Request for Harder Challenge (Part 2 item 13)
-    if (
-      prompt.includes("harder") ||
-      prompt.includes("challenge") ||
-      prompt.includes("more difficult") ||
-      prompt.includes("advanced") ||
-      prompt.includes("mastered")
-    ) {
+    const studentRequestedChallenge =
+      studentQuery.includes("harder") ||
+      studentQuery.includes("challenge") ||
+      studentQuery.includes("more difficult") ||
+      studentQuery.includes("advanced") ||
+      studentQuery.includes("mas mahirap") ||
+      studentQuery.includes("hamon");
+
+    if (studentRequestedChallenge) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "FEEDBACK",
+            message: "Napakagandang sigasig! Dahil naunawaan mo na ang simpleng pagdaragdag ng integers, narito ang isang hamon:\n\n**Hamon:** Suriin ang $(-15) + (+8) + (-6) + (+12)$.",
+            guidingQuestion: "Ang magandang estratehiya ay pagsamahin muna ang mga positibo at negatibo. Ano ang kabuuan ng mga negatibo at kabuuan ng mga positibo?",
+            hintLevel: 2,
+            encouragement: "Ang paglutas sa mas mahihirap na problema ay nagpapalakas ng galing sa matematika!",
+            nextStep: "Pagsamahin ang magkakaparehong sign bago pagsamahin ang lahat.",
+            detectedIssue: "NONE",
+            suggestedAction: "TRY_HARDER",
+            sourceGrounding: ["Advanced MATATAG Grade 7 Applications"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "FEEDBACK",
@@ -543,12 +877,32 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 14. Request for Practice (Part 2 item 19)
-    if (
-      prompt.includes("give me practice") ||
-      prompt.includes("want to practice") ||
-      prompt.includes("practice question") ||
-      prompt.includes("more questions")
-    ) {
+    const studentRequestedPractice =
+      studentQuery.includes("give me practice") ||
+      studentQuery.includes("want to practice") ||
+      studentQuery.includes("practice question") ||
+      studentQuery.includes("more questions") ||
+      studentQuery.includes("pagsasanay") ||
+      studentQuery.includes("mag-practice");
+
+    if (studentRequestedPractice) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "HINT",
+            message: "Narito ang isang tanong sa pagsasanay na nakalinya sa iyong kasalukuyang aralin:\n\n**Pagsasanay:** Kalkulahin ang $(-11) + (+7)$.",
+            guidingQuestion: "Ano ang diperensya sa pagitan ng 11 at 7, at aling sign ang dapat ilagay sa sagot?",
+            hintLevel: 1,
+            encouragement: "Ang aktibong pagsasanay ay ang pinakamabilis na landas tungo sa kahusayan!",
+            nextStep: "Ibigay ang iyong sagot o sabihin kung anong hakbang ang iyong ginawa.",
+            detectedIssue: "NONE",
+            suggestedAction: "PRACTICE",
+            sourceGrounding: ["Lesson Practice Bank"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "HINT",
@@ -567,13 +921,32 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 15a. Intermediate Student Response to Guiding Question (Phase 22 Conversational Continuity)
-    if (
-      prompt.includes("first number") ||
-      prompt.includes("the first number is") ||
-      prompt.includes("is the first number") ||
-      prompt.includes("it's -5") ||
-      prompt.includes("its -5")
-    ) {
+    const studentAnsweredGuidingQuestion =
+      studentQuery.includes("first number") ||
+      studentQuery.includes("the first number is") ||
+      studentQuery.includes("is the first number") ||
+      studentQuery.includes("it's -5") ||
+      studentQuery.includes("its -5") ||
+      studentQuery.includes("unang numero");
+
+    if (studentAnsweredGuidingQuestion) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "FEEDBACK",
+            message: "Eksaktong tama: $-5$ ang unang numero, at sa number line ito ay 5 unit sa kaliwa ng zero. Ngayon tingnan ang ikalawang numero, $-2$, na 2 unit lamang sa kaliwa ng zero.",
+            guidingQuestion: "Dahil ang mga halagang mas nasa kaliwa ay mas maliit, alin ang mas maliit: $-5$ o $-2$?",
+            hintLevel: 1,
+            encouragement: "Sinusundan mo ang mga hakbang nang may mahusay na pokus!",
+            nextStep: "Paghambingin ang posisyon ng parehong numero sa horizontal number line.",
+            detectedIssue: "NONE",
+            suggestedAction: "CONTINUE_LESSON",
+            sourceGrounding: ["Horizontal Number Line Model", "Previous Student Response Awareness"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "FEEDBACK",
@@ -592,14 +965,33 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 15b. Repeated Confusion / Second "I don't know" (Phase 22 Anti-Repetition & Strategy Shift)
-    if (
-      prompt.includes("still don't") ||
-      prompt.includes("still dont") ||
-      prompt.includes("still confused") ||
-      prompt.includes("repeated confusion") ||
-      prompt.includes("still lost") ||
-      prompt.includes("i still don't know")
-    ) {
+    const studentRepeatedConfusion =
+      studentQuery.includes("still don't") ||
+      studentQuery.includes("still dont") ||
+      studentQuery.includes("still confused") ||
+      studentQuery.includes("still lost") ||
+      studentQuery.includes("i still don't know") ||
+      studentQuery.includes("nalilito pa rin") ||
+      studentQuery.includes("di ko pa rin alam");
+
+    if (studentRepeatedConfusion) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Dahil nakakalito pa rin ito, magpalit tayo ng estratehiya at gumamit ng **integer counters model**! Isipin na may mga pulang chip para sa negatibong numero ($-$) at asul na chip para sa positibong numero ($+$). Kapag nagtagpo ang isang pula at isang asul na chip, bumubuo sila ng zero-pair at nagkakanselahan ($+1 + -1 = 0$).",
+            guidingQuestion: "Kung mayroon kang 5 pulang chip ($-5$) at 2 asul na chip ($+2$), ilang chip ang magkakansela bilang zero-pairs?",
+            hintLevel: 2,
+            encouragement: "Ang paglipat sa mga kongkretong modelo ay nagpapadali sa pag-unawa ng negatibong numero!",
+            nextStep: "Bilangin ang zero-pairs at tingnan kung ano ang matitira.",
+            detectedIssue: "CONFUSION",
+            suggestedAction: "TRY_EASIER",
+            sourceGrounding: ["Interactive Counter Model", "Teacher Material: Concrete Scaffolding"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
@@ -618,17 +1010,42 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 15c. Student Confused / First "I don't know" / General Confusion (Part 9 Situation E)
-    if (
-      prompt.includes("don't understand") ||
-      prompt.includes("dont understand") ||
-      prompt.includes("don't know") ||
-      prompt.includes("dont know") ||
-      prompt.includes("idk") ||
-      prompt.includes("no idea") ||
-      prompt.includes("confused") ||
-      prompt.includes("i'm lost") ||
-      prompt.includes("help me")
-    ) {
+    const studentConfused =
+      studentQuery.includes("don't understand") ||
+      studentQuery.includes("dont understand") ||
+      studentQuery.includes("don't know") ||
+      studentQuery.includes("dont know") ||
+      studentQuery.includes("idk") ||
+      studentQuery.includes("no idea") ||
+      studentQuery.includes("confused") ||
+      studentQuery.includes("i'm lost") ||
+      studentQuery.includes("help me") ||
+      studentQuery.includes("hindi ko alam") ||
+      studentQuery.includes("di ko alam") ||
+      studentQuery.includes("hindi ko maintindihan") ||
+      studentQuery.includes("di ko maintindihan") ||
+      studentQuery.includes("tulungan mo ako") ||
+      studentQuery.includes("nalilito ako");
+
+    if (studentConfused) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            type: "GUIDING_QUESTION",
+            responseType: "GUIDING_QUESTION",
+            message: "Huwag mag-alala, ang pag-aaral ng mga bagong konsepto sa matematika ay nangangailangan ng oras at tiyaga! Magdahan-dahan tayo at suriin ang pinakaunang bahagi ng problema nang magkasama.",
+            guidingQuestion: "Masasabi mo ba sa akin kung ano ang unang numero sa problema at kung ito ay positibo o negatibo?",
+            hintLevel: 1,
+            encouragement: "Gagawin natin ito nang isa-isang maliit na hakbang.",
+            nextStep: "Tukuyin ang unang numero at ang sign nito.",
+            detectedIssue: "CONFUSION",
+            suggestedAction: "TRY_EASIER",
+            sourceGrounding: ["Empathetic Socratic Scaffolding"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
       return {
         text: JSON.stringify({
           type: "GUIDING_QUESTION",
@@ -648,12 +1065,6 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 16. Default grounded pedagogical response
-    const isFilipino =
-      request.systemPrompt.includes("Language Mandate: Natural Filipino") ||
-      request.userPrompt.includes("MANDATORY LANGUAGE DIRECTIVE") ||
-      prompt.includes("tagalog") ||
-      prompt.includes("filipino");
-
     if (isFilipino) {
       return {
         text: JSON.stringify({

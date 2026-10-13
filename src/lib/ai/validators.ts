@@ -7,6 +7,7 @@ import type {
   StructuredMistakeAnalysis,
   MistakeCategoryType,
 } from "./types";
+import { isFilipinoText } from "../voice/voice-utils";
 
 const VALID_RESPONSE_TYPES: AITutorMessageType[] = [
   "QUESTION",
@@ -103,6 +104,11 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
         ? parsed.sourceGrounding.map((s: any) => String(s).slice(0, 100))
         : undefined;
 
+      // If Tagalog/Filipino was requested, verify that the message is in Filipino; if not, use localized fallback
+      if (context.requestedLanguage === "fil" && !isFilipinoText(message)) {
+        return generateFallbackTutorResponse(context);
+      }
+
       return {
         responseType,
         message,
@@ -116,14 +122,31 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
       };
     }
   } catch {
-    // JSON parsing failed; if the rawText looks like natural text, use it safely
-    if (rawText.length > 10 && rawText.length < 1500 && !rawText.includes("{") && !rawText.includes("```")) {
-      return {
-        responseType: "HINT",
-        message: sanitizeMessage(rawText.trim()),
-        hintLevel: 1,
-        encouragement: context.requestedLanguage === "fil" ? "Ipagpatuloy ang pagsusumikap!" : "Keep trying!",
-      };
+    // If regex can extract message from partially formatted or truncated JSON:
+    const messageMatch = rawText.match(/["']message["']\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    if (messageMatch && messageMatch[1] && messageMatch[1].trim().length > 5) {
+      const extractedMessage = sanitizeMessage(messageMatch[1].replace(/\\"/g, '"').trim());
+      if (context.requestedLanguage !== "fil" || isFilipinoText(extractedMessage)) {
+        return {
+          responseType: "HINT",
+          message: extractedMessage,
+          hintLevel: 1,
+          encouragement: context.requestedLanguage === "fil" ? "Kaya mo iyan!" : "Keep trying!",
+        };
+      }
+    }
+
+    // JSON parsing failed; only use rawText if it looks like genuine student-facing natural language
+    const isSchemaEcho = /responseType|JSON output|guidingQuestion|hintLevel|sourceGrounding/i.test(rawText);
+    if (rawText.length > 10 && rawText.length < 1500 && !rawText.includes("{") && !rawText.includes("```") && !isSchemaEcho) {
+      if (context.requestedLanguage !== "fil" || isFilipinoText(rawText)) {
+        return {
+          responseType: "HINT",
+          message: sanitizeMessage(rawText.trim()),
+          hintLevel: 1,
+          encouragement: context.requestedLanguage === "fil" ? "Ipagpatuloy ang pagsusumikap!" : "Keep trying!",
+        };
+      }
     }
   }
 
