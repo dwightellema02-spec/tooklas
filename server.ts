@@ -892,7 +892,7 @@ app.get("/api/student/lessons/:id/access", async (req: Request, res: Response) =
     }
     const userId = session.userId;
     const { id } = req.params;
-    const access = await dbService.getLessonAccess(userId, id);
+    const access = await dbService.getLessonAccess(userId, id, session.role);
     return res.json({ data: access });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to verify lesson access";

@@ -363,6 +363,9 @@ export async function buildAITutorContext(params: AITutorInteractParams): Promis
   const videoIntegrityBoundary =
     "Verified metadata and teacher notes are available for Mathisipan video resources. However, NO machine-readable video transcript is ingested into the system. You MUST NOT claim to have watched the video. Ground your answers in lesson text and teacher notes.";
 
+  // 12. Multilingual & Language Preference Detection
+  const requestedLanguage = detectLanguagePreference(studentQuery, recentMessages);
+
   return {
     student,
     curriculum: {
@@ -387,5 +390,74 @@ export async function buildAITutorContext(params: AITutorInteractParams): Promis
     adaptiveRecommendation,
     sourcePriority,
     videoIntegrityBoundary,
+    requestedLanguage,
   };
 }
+
+/**
+ * Detect language preference based on current student query and recent conversation history.
+ * Recognizes explicit requests (tagalog, filipino, paliwanag sa tagalog, etc.)
+ * as well as common Filipino markers while supporting English defaults and explicit English requests.
+ */
+export function detectLanguagePreference(
+  studentQuery?: string,
+  recentMessages?: Array<{ role: string; content: string }>
+): "fil" | "en" {
+  const query = (studentQuery || "").trim().toLowerCase();
+
+  // Explicit English requests take immediate precedence
+  if (
+    /\b(in english|english please|speak english|explain in english|use english|mag-english)\b/i.test(query)
+  ) {
+    return "en";
+  }
+
+  // Explicit Tagalog / Filipino requests
+  const explicitFilipinoRegex =
+    /\b(tagalog|filipino|sa tagalog|in tagalog|paliwanag sa tagalog|ipaliwanag sa tagalog|mag-tagalog|tagalugin|salitang tagalog|sa filipino|in filipino|paliwanag sa filipino|ipaliwanag sa filipino)\b/i;
+  if (explicitFilipinoRegex.test(query)) {
+    return "fil";
+  }
+
+  // Common Filipino conversational words / grammatical particles
+  const filipinoMarkers = [
+    /\b(ano|bakit|paano|kailan|saan|sino|alin|magkano)\b/i,
+    /\b(natin|ninyo|kayo|tayo|sila|ako|ikaw|siya)\b/i,
+    /\b(paliwanag|ipaliwanag|sabihin|alam|tulungan|turuan|intindihin|maintindihan)\b/i,
+    /\b(kasi|kaya|kung|kapag|dahil|subalit|ngunit|naman|pala|talaga|pakiusap|paki)\b/i,
+    /\b(kabaligtaran|positibo|negatibo|numero|sagot|aralin|tuntunin)\b/i,
+  ];
+
+  let markerMatches = 0;
+  for (const marker of filipinoMarkers) {
+    if (marker.test(query)) {
+      markerMatches++;
+    }
+  }
+  if (markerMatches >= 1 && (/\b(ang|ng|sa|mga|ay|na|at|ito|iyon)\b/i.test(query) || markerMatches >= 2)) {
+    return "fil";
+  }
+
+  // 4. If query is clearly composed in English, preserve English
+  const englishSentenceMarkers =
+    /\b(what|how|why|when|where|which|who|can|could|would|please|give|tell|help|hint|rule|concept|explain|problem|integers?|numbers?|positive|negative|step|first|next|think)\b/i;
+  if (query && englishSentenceMarkers.test(query)) {
+    return "en";
+  }
+
+  // 5. Conversational continuity for short/ambiguous queries (e.g. "bakit", "next", "-5"):
+  if (recentMessages && recentMessages.length > 0) {
+    const lastTutorOrStudentMsg = recentMessages.slice(-3);
+    for (const msg of lastTutorOrStudentMsg) {
+      if (explicitFilipinoRegex.test(msg.content.toLowerCase())) {
+        return "fil";
+      }
+      if (/\b(tuntunin|kabaligtaran|positibo|negatibo|mag-usap tayo|ating aralin|hakbang|subukan)\b/i.test(msg.content)) {
+        return "fil";
+      }
+    }
+  }
+
+  return "en";
+}
+

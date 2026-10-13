@@ -4,7 +4,7 @@
  */
 
 import { SpeechSynthesisOptions } from "./voice-types";
-import { formatTextForSpeech, isSpeechSynthesisSupported } from "./voice-utils";
+import { formatTextForSpeech, isSpeechSynthesisSupported, isFilipinoText } from "./voice-utils";
 
 export interface SpeechSynthesisCallbacks {
   onStart?: () => void;
@@ -73,7 +73,12 @@ export class SpeechSynthesisController {
       utterance.rate = options.rate ?? 0.95; // Slightly slower for clear mathematical explanation
       utterance.pitch = options.pitch ?? 1.0;
       utterance.volume = options.volume ?? 1.0;
-      utterance.lang = options.lang || "en-US";
+
+      const isFilipino =
+        Boolean(options.lang?.startsWith("fil") || options.lang?.startsWith("tl")) ||
+        isFilipinoText(rawText);
+      const targetLang = options.lang || (isFilipino ? "fil-PH" : "en-US");
+      utterance.lang = targetLang;
 
       // Select preferred voice if available
       const voices = this.getVoices();
@@ -81,10 +86,30 @@ export class SpeechSynthesisController {
         if (options.voiceName) {
           const match = voices.find((v) => v.name === options.voiceName);
           if (match) utterance.voice = match;
+        } else if (isFilipino) {
+          // Prioritize Filipino / Tagalog voices (e.g. Microsoft Angelo, Microsoft Blessica, Google Filipino)
+          const filipinoVoice =
+            voices.find(
+              (v) =>
+                v.name.toLowerCase().includes("angelo") ||
+                v.name.toLowerCase().includes("blessica") ||
+                v.name.toLowerCase().includes("filipino") ||
+                v.name.toLowerCase().includes("tagalog")
+            ) ||
+            voices.find(
+              (v) =>
+                v.lang.toLowerCase().startsWith("fil") ||
+                v.lang.toLowerCase().startsWith("tl")
+            ) ||
+            voices.find((v) => v.lang.toLowerCase().startsWith("en-ph"));
+
+          if (filipinoVoice) {
+            utterance.voice = filipinoVoice;
+          }
         } else {
-          // Look for English or Filipino voice
+          // Look for English or Philippine English voice
           const preferred =
-            voices.find((v) => v.lang.startsWith("en-PH") || v.lang.startsWith("fil")) ||
+            voices.find((v) => v.lang.startsWith("en-PH")) ||
             voices.find((v) => v.lang.startsWith("en-US") || v.lang.startsWith("en-GB")) ||
             voices[0];
           if (preferred) utterance.voice = preferred;

@@ -125,6 +125,7 @@ export function formatTextForSpeech(text: string): string {
     return "Sensitive system message cannot be read aloud.";
   }
 
+  const isFilipino = isFilipinoText(text);
   let cleaned = text;
 
   // Remove markdown headers and list bullets
@@ -137,8 +138,12 @@ export function formatTextForSpeech(text: string): string {
   cleaned = cleaned.replace(/__(.*?)__/g, "$1");
   cleaned = cleaned.replace(/_(.*?)_/g, "$1");
 
-  // Format absolute value: $|-7|$ or |-7| -> "absolute value of negative 7"
+  // Format absolute value: $|-7|$ or |-7| -> "absolute value of negative 7" or "absolute value ng negatibo 7"
   cleaned = cleaned.replace(/\|\s*(-?\d+)\s*\|/g, (_match, p1) => {
+    if (isFilipino) {
+      const val = p1.startsWith("-") ? `negatibo ${p1.slice(1)}` : p1;
+      return `absolute value ng ${val}`;
+    }
     const val = p1.startsWith("-") ? `negative ${p1.slice(1)}` : p1;
     return `absolute value of ${val}`;
   });
@@ -147,8 +152,8 @@ export function formatTextForSpeech(text: string): string {
   cleaned = cleaned.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "$1 over $2");
 
   // Format simple text fractions: 1/2 -> one-half, 3/4 -> three-fourths
-  cleaned = cleaned.replace(/\b1\/2\b/g, "one-half");
-  cleaned = cleaned.replace(/\b3\/4\b/g, "three-fourths");
+  cleaned = cleaned.replace(/\b1\/2\b/g, isFilipino ? "kalahati" : "one-half");
+  cleaned = cleaned.replace(/\b3\/4\b/g, isFilipino ? "tatlong sangkapat" : "three-fourths");
   cleaned = cleaned.replace(/\b(\d+)\/(\d+)\b/g, "$1 over $2");
 
   // Format exponents: x^2 or x² -> x squared, x^3 or x³ -> x cubed
@@ -178,9 +183,14 @@ export function formatTextForSpeech(text: string): string {
   cleaned = cleaned.replace(/\\pi/g, " pi ");
   cleaned = cleaned.replace(/\\sqrt\{([^}]+)\}/g, "square root of $1");
 
-  // Format negative numbers: (-5) -> negative 5, -5 -> negative 5
-  cleaned = cleaned.replace(/\(\s*-\s*(\d+)\s*\)/g, "negative $1");
-  cleaned = cleaned.replace(/-\s*(\d+)/g, "negative $1");
+  // Format negative numbers: (-5) -> negative 5 or negatibo 5
+  if (isFilipino) {
+    cleaned = cleaned.replace(/\(\s*-\s*(\d+)\s*\)/g, "negatibo $1");
+    cleaned = cleaned.replace(/-\s*(\d+)/g, "negatibo $1");
+  } else {
+    cleaned = cleaned.replace(/\(\s*-\s*(\d+)\s*\)/g, "negative $1");
+    cleaned = cleaned.replace(/-\s*(\d+)/g, "negative $1");
+  }
 
   // Remove remaining KaTeX dollar delimiters and backslashes
   cleaned = cleaned.replace(/\$+/g, "");
@@ -190,4 +200,34 @@ export function formatTextForSpeech(text: string): string {
   cleaned = cleaned.replace(/\s+/g, " ").trim();
 
   return cleaned;
+}
+
+/**
+ * Detect whether a text contains Filipino / Tagalog words or patterns
+ */
+export function isFilipinoText(text: string): boolean {
+  if (!text || typeof text !== "string") return false;
+  const lower = text.toLowerCase();
+
+  // Explicit keywords and common Filipino pedagogical terms
+  const filipinoKeywords = [
+    /\b(tagalog|filipino)\b/i,
+    /\b(mag-usap|aralin|tuntunin|kabaligtaran|positibo|negatibo)\b/i,
+    /\b(numero|bilang|halaga|posisyon|direksyon|kaliwa|kanan)\b/i,
+    /\b(hakbang|himayin|pagsamahin|ibawas|magkasama|dahan-dahan)\b/i,
+    /\b(lutasin|subukan|unawain|maintindihan|ipaliwanag|paliwanag|sabihin|sagot)\b/i,
+    /\b(ano|bakit|paano|kailan|saan|sino|alin|magkano)\b/i,
+    /\b(natin|ninyo|tayo|sila|ako|ikaw|siya)\b/i,
+    /\b(dahil|kung|kapag|kaya|kasi|subalit|ngunit|naman|pala|talaga)\b/i,
+    /\b(pareho|magkaiba|tiyak|malapit|malaki|maliit|katumbas|buo|buong)\b/i,
+  ];
+
+  let matches = 0;
+  for (const regex of filipinoKeywords) {
+    if (regex.test(lower)) matches++;
+  }
+
+  const particles = /\b(ang|ng|sa|mga|ay|na|at|ito|iyon|ba)\b/i;
+
+  return matches >= 2 || (matches >= 1 && particles.test(lower));
 }

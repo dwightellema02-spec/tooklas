@@ -91,6 +91,12 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
         const accessRes = await authFetch(`/api/student/lessons/${lessonId}/access`);
         const accessJson = await accessRes.json();
 
+        // If this is an aliased legacy ID, seamlessly navigate to the canonical lesson URL
+        if (accessJson.data?.canonicalLessonId && accessJson.data.canonicalLessonId !== lessonId) {
+          handleNav(`/student/lessons/${accessJson.data.canonicalLessonId}`);
+          return;
+        }
+
         if (!accessRes.ok || !accessJson.data?.allowed) {
           setAccess(accessJson.data || { allowed: false, reason: "Lesson is locked by prerequisites." });
           setLoading(false);
@@ -384,12 +390,25 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
         </p>
 
         <div className="space-y-3">
-          <Button variant="primary" fullWidth onClick={() => handleNav("/student/learning-path")}>
-            <span>View Learning Path Roadmap</span>
-          </Button>
-          <Button variant="ghost" fullWidth onClick={() => handleNav("/student")}>
-            Return to Dashboard
-          </Button>
+          {user?.role === "TEACHER" || user?.role === "ADMIN" ? (
+            <>
+              <Button variant="primary" fullWidth onClick={() => handleNav("/teacher/curriculum")}>
+                <span>Return to Curriculum Explorer</span>
+              </Button>
+              <Button variant="ghost" fullWidth onClick={() => handleNav("/teacher")}>
+                Return to Teacher Dashboard
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="primary" fullWidth onClick={() => handleNav("/student/learning-path")}>
+                <span>View Learning Path Roadmap</span>
+              </Button>
+              <Button variant="ghost" fullWidth onClick={() => handleNav("/student")}>
+                Return to Dashboard
+              </Button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -423,10 +442,16 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              onClick={() => handleNav("/student/learning-path")}
+              onClick={() => {
+                if (user?.role === "TEACHER" || user?.role === "ADMIN") {
+                  handleNav("/teacher/curriculum");
+                } else {
+                  handleNav("/student/learning-path");
+                }
+              }}
               className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
-              title="Return to Learning Path"
-              aria-label="Return to Learning Path"
+              title={user?.role === "TEACHER" || user?.role === "ADMIN" ? "Return to Curriculum Explorer" : "Return to Learning Path"}
+              aria-label={user?.role === "TEACHER" || user?.role === "ADMIN" ? "Return to Curriculum Explorer" : "Return to Learning Path"}
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -434,9 +459,16 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
               <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800 block truncate">
                 {lesson.unit?.title || "Grade 7 Mathematics"}
               </span>
-              <h1 className="text-sm sm:text-base font-bold text-slate-900 truncate">
-                {lesson.title}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                  {lesson.title}
+                </h1>
+                {(access?.isStaffBypass || user?.role === "TEACHER" || user?.role === "ADMIN") && (
+                  <Badge variant="secondary" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 shrink-0 font-medium">
+                    Staff Preview
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
 

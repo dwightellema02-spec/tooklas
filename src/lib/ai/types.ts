@@ -157,6 +157,7 @@ export interface AITutorContext {
   };
   sourcePriority?: string[];
   videoIntegrityBoundary?: string;
+  requestedLanguage?: "fil" | "en";
 }
 
 export interface StructuredTutorResponse {

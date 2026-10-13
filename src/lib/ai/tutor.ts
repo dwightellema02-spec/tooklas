@@ -116,7 +116,7 @@ export class AITutorService {
     });
 
     // 7. Generate Prompts
-    const systemPrompt = buildTutorSystemPrompt();
+    const systemPrompt = buildTutorSystemPrompt(context.requestedLanguage);
     const userPrompt = buildTutorUserPrompt(context);
 
     // 8. Call AI Provider (with graceful automatic fallback)

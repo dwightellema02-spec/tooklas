@@ -278,7 +278,13 @@ export default function TeacherCurriculumPage({ onNavigate }: TeacherCurriculumP
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleNav(`/teacher/lessons/${lesson.id}/edit`)}
+                              onClick={() => {
+                                const targetId =
+                                  lesson.id === "b5688f4e-dece-4add-a830-b20ae5b9a4b1"
+                                    ? "lsn_01"
+                                    : lesson.id;
+                                handleNav(`/teacher/lessons/${targetId}/edit`);
+                              }}
                             >
                               Edit Studio
                             </Button>
@@ -286,7 +292,13 @@ export default function TeacherCurriculumPage({ onNavigate }: TeacherCurriculumP
                               <Button
                                 variant="secondary"
                                 size="sm"
-                                onClick={() => handleNav(`/student/lessons/${lesson.id}`)}
+                                onClick={() => {
+                                  const targetId =
+                                    lesson.id === "b5688f4e-dece-4add-a830-b20ae5b9a4b1"
+                                      ? "lsn_01"
+                                      : lesson.id;
+                                  handleNav(`/student/lessons/${targetId}`);
+                                }}
                               >
                                 Student View
                               </Button>

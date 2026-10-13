@@ -62,7 +62,14 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
   }
 
   try {
-    const parsed = JSON.parse(jsonString);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonString);
+    } catch {
+      // Repair unescaped LaTeX backslashes in JSON strings (e.g., \frac, \dots, \-, \times)
+      const repairedJson = jsonString.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, "\\\\");
+      parsed = JSON.parse(repairedJson);
+    }
 
     if (parsed && typeof parsed === "object") {
       let responseType: AITutorMessageType = "HINT";
@@ -74,7 +81,9 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
       if (typeof parsed.message === "string" && parsed.message.trim().length > 0) {
         message = sanitizeMessage(parsed.message.trim());
       } else {
-        message = "Let's review this concept together step by step.";
+        message = context.requestedLanguage === "fil"
+          ? "Balikan natin ang konseptong ito nang magkasama, hakbang-hakbang."
+          : "Let's review this concept together step by step.";
       }
 
       const guidingQuestion =
@@ -84,7 +93,9 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
 
       const hintLevel = typeof parsed.hintLevel === "number" ? parsed.hintLevel : 1;
       const encouragement =
-        typeof parsed.encouragement === "string" ? sanitizeMessage(parsed.encouragement.trim()) : "You can do this!";
+        typeof parsed.encouragement === "string"
+          ? sanitizeMessage(parsed.encouragement.trim())
+          : (context.requestedLanguage === "fil" ? "Kaya mo iyan!" : "You can do this!");
       const nextStep = typeof parsed.nextStep === "string" ? sanitizeMessage(parsed.nextStep.trim()) : undefined;
       const detectedIssue = typeof parsed.detectedIssue === "string" ? sanitizeMessage(parsed.detectedIssue.trim()) : undefined;
       const suggestedAction = typeof parsed.suggestedAction === "string" ? sanitizeMessage(parsed.suggestedAction.trim()) : undefined;
@@ -111,7 +122,7 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
         responseType: "HINT",
         message: sanitizeMessage(rawText.trim()),
         hintLevel: 1,
-        encouragement: "Keep trying!",
+        encouragement: context.requestedLanguage === "fil" ? "Ipagpatuloy ang pagsusumikap!" : "Keep trying!",
       };
     }
   }
@@ -127,7 +138,59 @@ function sanitizeMessage(text: string): string {
 }
 
 export function generateFallbackTutorResponse(context: AITutorContext): StructuredTutorResponse {
-  const targetSkill = context.skill?.title || context.lesson?.title || "this math concept";
+  const isFilipino = context.requestedLanguage === "fil";
+  const targetSkill = context.skill?.title || context.lesson?.title || (isFilipino ? "araling ito" : "this math concept");
+
+  if (isFilipino) {
+    if (context.helpLevel === "LEVEL_1_HINT") {
+      return {
+        responseType: "HINT",
+        message: `Maglaan ng sandali upang balikan ang tuntunin para sa ${targetSkill}. Tandaan na bawat positibo at negatibong numero ay may tiyak na posisyon sa number line.`,
+        guidingQuestion: "Saang direksyon sa number line ang kumakatawan sa mas malalaking halaga?",
+        hintLevel: 1,
+        encouragement: "Gawin natin ito nang dahan-dahan, isang hakbang sa bawat pagkakataon!",
+        nextStep: "Tukuyin muna ang mga sign ng bawat numero.",
+      };
+    }
+
+    if (context.helpLevel === "LEVEL_2_HINT") {
+      return {
+        responseType: "HINT",
+        message: `Sa isang karaniwang horizontal number line, ang mga numerong nasa bandang kanan ay laging mas malaki kaysa sa mga numerong nasa kaliwa. Para sa mga negatibong numero, ang mas malapit sa zero ang may mas malaking halaga.`,
+        guidingQuestion: "Sa dalawang numero, alin ang mas malapit sa zero o mas nasa bandang kanan?",
+        hintLevel: 2,
+        encouragement: "Malapit mo na itong makuha!",
+      };
+    }
+
+    if (context.helpLevel === "GUIDING_QUESTION") {
+      return {
+        responseType: "GUIDING_QUESTION",
+        message: `Himayin natin ito. Ano ang mga sign ng mga numerong kasama sa tanong na ito?`,
+        guidingQuestion: "Pareho ba silang positibo, parehong negatibo, o magkaiba ang sign?",
+        hintLevel: 1,
+        encouragement: "Pagtuunan muna ng pansin ang mga sign!",
+      };
+    }
+
+    if (context.helpLevel === "CONCEPT_EXPLANATION") {
+      return {
+        responseType: "EXPLANATION",
+        message: `Sa Grade 7 Mathematics, ang integers ay kinabibilangan ng lahat ng positibong buong numero, zero, at negatibong buong numero ($... -3, -2, -1, 0, 1, 2, 3 ...$). Kapag naghahambing ng integers, ang anumang positibong numero ay laging mas malaki kaysa sa anumang negatibong numero. Sa pagitan ng dalawang negatibong numero, ang may mas maliit na absolute value ang mas malaki.`,
+        guidingQuestion: "Paano magagamit ang tuntuning ito sa mga numero sa iyong tanong?",
+        hintLevel: 2,
+        encouragement: "Ang pagbabalik-aral sa konsepto ay nagpapatibay ng iyong kaalaman!",
+      };
+    }
+
+    return {
+      responseType: "HINT",
+      message: `Tingnan natin ito nang hakbang-hakbang. Anong operasyon o katangian ang sa tingin mo ay angkop gamitin para sa ${targetSkill}?`,
+      guidingQuestion: "Masasabi mo ba kung ano ang eksaktong ipinapahanap ng tanong?",
+      hintLevel: 1,
+      encouragement: "Kaya mo ito — lutasin natin ito nang magkasama!",
+    };
+  }
 
   if (context.helpLevel === "LEVEL_1_HINT") {
     return {

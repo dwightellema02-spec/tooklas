@@ -50,6 +50,16 @@ export const getHasValidDatabaseUrl = (): boolean => isPostgresUrl(process.env.D
 
 export const hasValidDatabaseUrl = isPostgresUrl(process.env.DATABASE_URL);
 
+export const DUPLICATE_SEED_LESSON_ID = "b5688f4e-dece-4add-a830-b20ae5b9a4b1";
+export const CANONICAL_SEED_LESSON_ID = "lsn_01";
+
+export function resolveCanonicalLessonId(lessonId: string): string {
+  if (lessonId === DUPLICATE_SEED_LESSON_ID) {
+    return CANONICAL_SEED_LESSON_ID;
+  }
+  return lessonId;
+}
+
 let currentPrisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
@@ -2014,7 +2024,33 @@ export const dbService = {
             },
           },
         });
-        if (subjects.length > 0) return subjects;
+        if (subjects.length > 0) {
+          const cleanedSubjects = subjects.map((subj) => ({
+            ...subj,
+            grades: subj.grades.map((grd) => ({
+              ...grd,
+              terms: grd.terms.map((trm) => {
+                const hasUnt01 = trm.units.some((u) => u.id === "unt_01");
+                const filteredUnits = trm.units
+                  .filter((u) => !(hasUnt01 && u.id === "22a99f29-6caa-4d2e-8aee-d431d35d58e1"))
+                  .map((unit) => {
+                    const hasLsn01 = unit.lessons.some((l) => l.id === CANONICAL_SEED_LESSON_ID);
+                    return {
+                      ...unit,
+                      lessons: unit.lessons.filter(
+                        (l) => !(hasLsn01 && l.id === DUPLICATE_SEED_LESSON_ID)
+                      ),
+                    };
+                  });
+                return {
+                  ...trm,
+                  units: filteredUnits,
+                };
+              }),
+            })),
+          }));
+          return cleanedSubjects;
+        }
       }
     } catch (error) {
       console.warn("Prisma query failed, utilizing fallback seed data:", error);
@@ -2085,7 +2121,12 @@ export const dbService = {
           },
           orderBy: { sequenceOrder: "asc" },
         });
-        if (lessons.length > 0) return lessons;
+        if (lessons.length > 0) {
+          const hasLsn01 = lessons.some((l) => l.id === CANONICAL_SEED_LESSON_ID);
+          return lessons.filter(
+            (l) => !(hasLsn01 && l.id === DUPLICATE_SEED_LESSON_ID)
+          );
+        }
       }
     } catch (e) {
       console.warn("Falling back to in-memory lessons:", e);
@@ -2105,10 +2146,11 @@ export const dbService = {
    * Get single lesson by ID with all relations
    */
   async getLessonById(id: string) {
+    const targetId = resolveCanonicalLessonId(id);
     try {
       if (hasValidDatabaseUrl) {
         const lesson = await prisma.lesson.findUnique({
-          where: { id },
+          where: { id: targetId },
           include: {
             unit: {
               include: {
@@ -2144,10 +2186,10 @@ export const dbService = {
         if (lesson) return lesson;
       }
     } catch (e) {
-      console.warn(`Lesson query for ${id} falling back:`, e);
+      console.warn(`Lesson query for ${id} (resolved: ${targetId}) falling back:`, e);
     }
 
-    const item = fallbackStore.curriculum.lessons.find((l) => l.id === id);
+    const item = fallbackStore.curriculum.lessons.find((l) => l.id === targetId);
     if (!item) return null;
 
     return {
@@ -2517,17 +2559,57 @@ export const dbService = {
   },
 
   /**
-   * Check access permission for a student to open a specific lesson
+   * Check access permission for a student or staff to open a specific lesson
    */
-  async getLessonAccess(userId: string, lessonId: string) {
+  async getLessonAccess(userId: string, lessonId: string, userRole?: string) {
+    const canonicalLessonId = resolveCanonicalLessonId(lessonId);
+
+    // Staff Preview Bypass: Teachers, Admins, and Researchers can preview any published lesson
+    // (and Admins can preview any lesson) without student prerequisite locks.
+    const isStaff = userRole === "ADMIN" || userRole === "TEACHER" || userRole === "RESEARCHER";
+    if (isStaff) {
+      const lesson = await this.getLessonById(canonicalLessonId);
+      if (lesson) {
+        // Teachers/Researchers can preview any published lesson; Admin can preview any lesson
+        if (userRole === "ADMIN" || lesson.status === "PUBLISHED" || (lesson.authorId && lesson.authorId === userId)) {
+          return {
+            allowed: true,
+            state: "AVAILABLE" as const,
+            isStaffBypass: true,
+            canonicalLessonId,
+            node: {
+              lessonId: canonicalLessonId,
+              title: lesson.title,
+              sequenceOrder: lesson.sequenceOrder,
+              state: "AVAILABLE" as const,
+              progressPercentage: 100,
+              lockReasons: [],
+              prerequisiteLessonId: lesson.prerequisiteLessonId,
+              skillIds: (lesson.skills || []).map((s: any) => s.skillId || s.skill?.id),
+            },
+          };
+        }
+      }
+    }
+
     const pathData = await this.getStudentLearningPath(userId);
-    const node = pathData.learningPath.find((n) => n.lessonId === lessonId);
+    const node = pathData.learningPath.find((n) => n.lessonId === canonicalLessonId);
 
     if (!node) {
+      const lesson = await this.getLessonById(canonicalLessonId);
+      if (!lesson) {
+        return {
+          allowed: false,
+          reason: "Lesson does not exist.",
+          state: "LOCKED" as const,
+          canonicalLessonId,
+        };
+      }
       return {
         allowed: false,
         reason: "Lesson does not exist or has not been published to students.",
         state: "LOCKED" as const,
+        canonicalLessonId,
       };
     }
 
@@ -2539,6 +2621,7 @@ export const dbService = {
             ? node.lockReasons[0]
             : "Complete the required previous lesson first.",
         state: "LOCKED" as const,
+        canonicalLessonId,
       };
     }
 
@@ -2546,6 +2629,7 @@ export const dbService = {
       allowed: true,
       state: node.state,
       node,
+      canonicalLessonId,
     };
   },
 
@@ -2561,8 +2645,10 @@ export const dbService = {
       totalBlocks?: number;
     }
   ) {
+    const targetLessonId = resolveCanonicalLessonId(lessonId);
+
     let prog = fallbackStore.progress.find(
-      (p) => p.userId === userId && p.lessonId === lessonId
+      (p) => p.userId === userId && p.lessonId === targetLessonId
     );
 
     const now = new Date();
@@ -2571,7 +2657,7 @@ export const dbService = {
       prog = {
         id: `prg_${Date.now()}`,
         userId,
-        lessonId,
+        lessonId: targetLessonId,
         status: "LEARNING",
         progressPercentage: 15,
         startedAt: now,
@@ -2615,7 +2701,7 @@ export const dbService = {
     if (hasValidDatabaseUrl) {
       try {
         const existing = await prisma.studentProgress.findFirst({
-          where: { userId, lessonId },
+          where: { userId, lessonId: targetLessonId },
         });
 
         const statusEnum: ProgressStatus =
@@ -2638,7 +2724,7 @@ export const dbService = {
             await prisma.studentProgress.create({
               data: {
                 userId,
-                lessonId,
+                lessonId: targetLessonId,
                 status: statusEnum,
                 progressPercentage: prog.progressPercentage,
                 startedAt: prog.startedAt,
@@ -3220,11 +3306,12 @@ export const dbService = {
    * Get active session for a student in a lesson
    */
   async getLessonSession(userId: string, lessonId: string) {
+    const targetLessonId = resolveCanonicalLessonId(lessonId);
     try {
       if (hasValidDatabaseUrl) {
         const session = await prisma.lessonSession.findUnique({
           where: {
-            userId_lessonId: { userId, lessonId },
+            userId_lessonId: { userId, lessonId: targetLessonId },
           },
         });
         if (session) return session;
@@ -3234,14 +3321,14 @@ export const dbService = {
     }
 
     let session = fallbackStore.sessions.find(
-      (s) => s.userId === userId && s.lessonId === lessonId
+      (s) => s.userId === userId && s.lessonId === targetLessonId
     );
 
     if (!session) {
       session = {
         id: `ses_${Date.now()}`,
         userId,
-        lessonId,
+        lessonId: targetLessonId,
         currentSectionIndex: 0,
         completedBlockIds: [],
         startedAt: new Date(),
@@ -3265,17 +3352,18 @@ export const dbService = {
       isCompleted?: boolean;
     }
   ) {
+    const targetLessonId = resolveCanonicalLessonId(lessonId);
     const now = new Date();
 
     try {
       if (hasValidDatabaseUrl) {
         const session = await prisma.lessonSession.upsert({
           where: {
-            userId_lessonId: { userId, lessonId },
+            userId_lessonId: { userId, lessonId: targetLessonId },
           },
           create: {
             userId,
-            lessonId,
+            lessonId: targetLessonId,
             currentSectionIndex: data.currentSectionIndex ?? 0,
             completedBlockIds: data.completedBlockIds ?? [],
             startedAt: now,
@@ -3296,14 +3384,14 @@ export const dbService = {
     }
 
     let session = fallbackStore.sessions.find(
-      (s) => s.userId === userId && s.lessonId === lessonId
+      (s) => s.userId === userId && s.lessonId === targetLessonId
     );
 
     if (!session) {
       session = {
         id: `ses_${Date.now()}`,
         userId,
-        lessonId,
+        lessonId: targetLessonId,
         currentSectionIndex: data.currentSectionIndex ?? 0,
         completedBlockIds: data.completedBlockIds ?? [],
         startedAt: now,
@@ -3332,6 +3420,7 @@ export const dbService = {
     isCorrect: boolean;
     feedback?: string;
   }) {
+    const targetLessonId = resolveCanonicalLessonId(data.lessonId);
     const now = new Date();
 
     try {
@@ -3339,7 +3428,7 @@ export const dbService = {
         const count = await prisma.checkpointAttempt.count({
           where: {
             userId: data.userId,
-            lessonId: data.lessonId,
+            lessonId: targetLessonId,
             blockId: data.blockId,
           },
         });
@@ -3347,7 +3436,7 @@ export const dbService = {
         const attempt = await prisma.checkpointAttempt.create({
           data: {
             userId: data.userId,
-            lessonId: data.lessonId,
+            lessonId: targetLessonId,
             blockId: data.blockId,
             attempt: count + 1,
             answer: data.answer,
@@ -3359,9 +3448,9 @@ export const dbService = {
 
         // Also add to session completedBlockIds if correct
         if (data.isCorrect) {
-          const session = await this.getLessonSession(data.userId, data.lessonId);
+          const session = await this.getLessonSession(data.userId, targetLessonId);
           if (session && !session.completedBlockIds.includes(data.blockId)) {
-            await this.saveLessonSession(data.userId, data.lessonId, {
+            await this.saveLessonSession(data.userId, targetLessonId, {
               completedBlockIds: [...session.completedBlockIds, data.blockId],
             });
           }
@@ -3374,13 +3463,13 @@ export const dbService = {
     }
 
     const prevAttempts = fallbackStore.checkpointAttempts.filter(
-      (c) => c.userId === data.userId && c.lessonId === data.lessonId && c.blockId === data.blockId
+      (c) => c.userId === data.userId && c.lessonId === targetLessonId && c.blockId === data.blockId
     );
 
     const newAttempt: CheckpointAttemptItem = {
       id: `chk_${Date.now()}`,
       userId: data.userId,
-      lessonId: data.lessonId,
+      lessonId: targetLessonId,
       blockId: data.blockId,
       attempt: prevAttempts.length + 1,
       answer: data.answer,
@@ -3393,7 +3482,7 @@ export const dbService = {
 
     // Update session
     const session = fallbackStore.sessions.find(
-      (s) => s.userId === data.userId && s.lessonId === data.lessonId
+      (s) => s.userId === data.userId && s.lessonId === targetLessonId
     );
     if (session) {
       if (!session.completedBlockIds.includes(data.blockId)) {
@@ -3409,10 +3498,11 @@ export const dbService = {
    * Get all checkpoint attempts for a student on a lesson
    */
   async getCheckpointAttempts(userId: string, lessonId: string) {
+    const targetLessonId = resolveCanonicalLessonId(lessonId);
     try {
       if (hasValidDatabaseUrl) {
         return await prisma.checkpointAttempt.findMany({
-          where: { userId, lessonId },
+          where: { userId, lessonId: targetLessonId },
           orderBy: { createdAt: "desc" },
         });
       }
@@ -3911,14 +4001,15 @@ export const dbService = {
    * Record honest video open event without fake watch percentages
    */
   async recordVideoOpenedEvent(userId: string, lessonId: string, videoId: string) {
-    const session = await this.getLessonSession(userId, lessonId);
+    const targetLessonId = resolveCanonicalLessonId(lessonId);
+    const session = await this.getLessonSession(userId, targetLessonId);
     const timestamp = new Date();
 
     return {
       success: true,
       event: "VIDEO_OPENED",
       userId,
-      lessonId,
+      lessonId: targetLessonId,
       videoId,
       timestamp: timestamp.toISOString(),
       sessionStarted: !!session,

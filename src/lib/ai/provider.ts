@@ -104,6 +104,33 @@ export class LocalTutorEngine implements AIProvider {
       };
     }
 
+    // 1b. Explicit Tagalog / Filipino Request Handling
+    if (
+      prompt.includes("tagalog") ||
+      prompt.includes("filipino") ||
+      prompt.includes("paliwanag sa tagalog") ||
+      prompt.includes("ipaliwanag sa tagalog") ||
+      prompt.includes("sa tagalog") ||
+      prompt.includes("in tagalog") ||
+      prompt.includes("mag-tagalog")
+    ) {
+      return {
+        text: JSON.stringify({
+          responseType: "HINT",
+          message: "Walang anuman, mag-usap tayo sa Tagalog! Upang maunawaan ang araling ito, alalahanin na bawat positibo at negatibong numero ay may katumbas na posisyon sa horizontal number line. Ang mga numero sa kanan ay mas malaki kaysa sa mga numero sa kaliwa.",
+          guidingQuestion: "Sa problemang sinusubukan mo, ano ang unang numero at ano ang sign nito (positibo o negatibo)?",
+          hintLevel: 1,
+          encouragement: "Kaya mo iyan! Hatiin natin ang problema sa mas maliliit at madaling hakbang.",
+          nextStep: "Tukuyin ang sign at posisyon ng unang numero sa number line.",
+          detectedIssue: "NONE",
+          suggestedAction: "CONTINUE_LESSON",
+          sourceGrounding: ["DepEd MATATAG Grade 7 Mathematics Tagalog Guidance"],
+        }),
+        provider: this.name,
+        model: this.defaultModel,
+      };
+    }
+
     // 2. Direct Answer Requests (Part 10 - Socratic refusal)
     if (
       prompt.includes("give me the answer") ||
@@ -621,6 +648,30 @@ export class LocalTutorEngine implements AIProvider {
     }
 
     // 16. Default grounded pedagogical response
+    const isFilipino =
+      request.systemPrompt.includes("Language Mandate: Natural Filipino") ||
+      request.userPrompt.includes("MANDATORY LANGUAGE DIRECTIVE") ||
+      prompt.includes("tagalog") ||
+      prompt.includes("filipino");
+
+    if (isFilipino) {
+      return {
+        text: JSON.stringify({
+          responseType: "HINT",
+          message: "Lutasin natin ang problemang ito nang magkasama. Simulan sa pagsusuri ng mga tuntunin sa iyong kasalukuyang aralin para sa operasyong ito.",
+          guidingQuestion: "Ano ang unang operasyon o paghahambing na kailangan mong gawin?",
+          hintLevel: 1,
+          encouragement: "Kaya mo iyan — himayin natin ito nang magkasama.",
+          nextStep: "Pagtuunan ng pansin ang unang hakbang ng problema.",
+          detectedIssue: "NONE",
+          suggestedAction: "CONTINUE_LESSON",
+          sourceGrounding: ["DepEd MATATAG Aralin sa Matematika"],
+        }),
+        provider: this.name,
+        model: this.defaultModel,
+      };
+    }
+
     return {
       text: JSON.stringify({
         responseType: "HINT",

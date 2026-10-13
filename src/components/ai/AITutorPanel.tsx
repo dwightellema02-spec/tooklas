@@ -27,6 +27,7 @@ import {
   VoiceTranscriptResult,
   isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
+  isFilipinoText,
 } from "@/lib/voice";
 import { VoiceTutorButton } from "./VoiceTutorButton";
 import { VoiceTutorPanel } from "./VoiceTutorPanel";
@@ -141,7 +142,10 @@ export function AITutorPanel({
           if ((isVoiceTriggered || autoSpeakRef.current) && isTtsSupported && synthesisRef.current) {
             setSpeakingMessageId(json.data.message.id);
             setVoiceState("SPEAKING");
-            synthesisRef.current.speak(json.data.message.content);
+            const isFil = isFilipinoText(json.data.message.content);
+            synthesisRef.current.speak(json.data.message.content, {
+              lang: isFil ? "fil-PH" : "en-US",
+            });
           } else {
             setVoiceState("IDLE");
           }
@@ -263,7 +267,10 @@ export function AITutorPanel({
       if (synthesisRef.current) {
         setSpeakingMessageId(msgId);
         setVoiceState("SPEAKING");
-        synthesisRef.current.speak(content);
+        const isFil = isFilipinoText(content);
+        synthesisRef.current.speak(content, {
+          lang: isFil ? "fil-PH" : "en-US",
+        });
       }
     }
   };
@@ -406,7 +413,9 @@ export function AITutorPanel({
 
                     {!isStudent && msg.guidingQuestion && (
                       <div className="mt-2.5 pt-2 border-t border-emerald-100/70 bg-emerald-50/50 -mx-1 px-2.5 py-1.5 rounded-lg text-emerald-900 font-medium text-xs">
-                        <span className="font-bold text-emerald-700 mr-1">Think about:</span>
+                        <span className="font-bold text-emerald-700 mr-1">
+                          {isFilipinoText(msg.content) ? "Pag-isipan:" : "Think about:"}
+                        </span>
                         <MathText content={msg.guidingQuestion} />
                       </div>
                     )}
