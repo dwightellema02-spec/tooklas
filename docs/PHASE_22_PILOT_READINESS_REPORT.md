@@ -10,9 +10,9 @@ platform, section 23 security, section 24 database, sections 30, 37 and 39 (phas
 IMPLEMENTED:
 1. Three-term curriculum blueprint from the Budget of Work, and an idempotent, dry-run-by-default
    restructure script (`scripts/seed-bow-restructure.ts`).
-2. Eighteen original DRAFT lessons for Term 1 Weeks 1-6, one per sub-topic (a week is several class days, so a
+2. Twenty original DRAFT lessons for Term 1 Weeks 1-7, one per sub-topic (a week is several class days, so a
    week is not one lesson), limited to the Budget of Work and the exemplars. Multi-day lessons have Day sections.
-   Ten Math Isip videos are attached to the Week 1 and Week 2 lessons they match; the DepEd PDFs are teacher-only.
+   24 Math Isip videos are attached to the lessons they match (Weeks 1-7); the DepEd PDFs are teacher-only. Week 7 has no exemplar, so it follows the Budget of Work competency only.
 3. Checkpoints and questions are graded on the server. Answer keys and teacher-document text are never sent
    to students or visitors. `/api/curriculum` and `/api/lessons` show visitors and students published lessons only.
 4. Client route guard; production Content-Security-Policy; 1 MB body limit (30 MB only for signed-in staff
@@ -65,7 +65,7 @@ KNOWN LIMITATIONS:
 3. Rate limits are in memory, so only one instance is supported.
 4. `npm audit`: 3 moderate findings in mammoth (breaking fix deferred).
 5. The Admin research card reads a fixed demo student id.
-6. The new lessons are drafts and have not been reviewed by a teacher. Weeks 3 to 6 have no supporting videos yet.
+6. The new lessons are drafts and have not been reviewed by a teacher. Week 7 was written from the Budget of Work only because no exemplar was provided.
 
 DEFECTS FOUND:
 1. Anyone could read draft lessons, answer keys and the DepEd PDF text through public endpoints.

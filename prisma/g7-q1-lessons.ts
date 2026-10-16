@@ -1,5 +1,5 @@
 /**
- * Grade 7 Mathematics, Term 1, Weeks 1-6: original draft lessons written from the learning
+ * Grade 7 Mathematics, Term 1, Weeks 1-7: original draft lessons written from the learning
  * competencies of the DepEd MATATAG Three-Term Budget of Work (April 2026) and the sub-topics of the
  * weekly Lesson Exemplars.
  *
@@ -125,6 +125,7 @@ const video = (youtubeId: string, title: string): DraftVideo => ({ youtubeId, ti
 
 const POLYGONS = "Polygons and Angle Relationships";
 const PERCENT = "Percentages and Rates";
+const RATIONAL = "Rational Numbers and Roots";
 
 const SPECS: LessonSpec[] = [
   // ================================================================ WEEK 1
@@ -403,6 +404,7 @@ const SPECS: LessonSpec[] = [
     videos: [
       video("g8Y_0BrWIlA", "Grade 7 MATH Term 1 Week 2: Concave and Convex Polygons | MATATAG - Quarter 1 (Tagalog)"),
       video("O-kpbzRTArY", "Grade 7 MATH Term 1 Week 1-2: Polygon Short Quiz | MATATAG - Quarter 1 (Tagalog)"),
+      video("QXFU2-v0yXw", "Grade 7 MATH Term 1 Week 2: Measuring Convex & Concave Polygons | MATATAG - Quarter 1 (Tagalog)"),
     ],
     days: [
       {
@@ -472,7 +474,9 @@ const SPECS: LessonSpec[] = [
       "Find an unknown angle using these relationships",
     ],
     documents: [LE2],
-    videos: [],
+    videos: [
+      video("Ac1FTMGBQoI", "Grade 7 MATH Term 1 Week 2: Angle Pairs | MATATAG - First Term/1st Quarter 1 (Tagalog Tutorial)"),
+    ],
     days: [
       {
         focus: "Complementary, supplementary and adjacent angles",
@@ -556,7 +560,9 @@ const SPECS: LessonSpec[] = [
     description: "Identify the interior and exterior angles of a polygon.",
     learningObjectives: ["Define interior and exterior angles of a polygon", "Identify them in a polygon"],
     documents: [LE3],
-    videos: [],
+    videos: [
+      video("M0dH6YwWzbg", "Grade 7 MATH Term 1 Week 3: Interior and Exterior Angles in a Polygon | MATATAG - Quarter 1 Tagalog"),
+    ],
     days: [
       {
         focus: "Interior and exterior angles",
@@ -599,7 +605,9 @@ const SPECS: LessonSpec[] = [
       "Use the relationship to find an unknown angle",
     ],
     documents: [LE3],
-    videos: [],
+    videos: [
+      video("M0dH6YwWzbg", "Grade 7 MATH Term 1 Week 3: Interior and Exterior Angles in a Polygon | MATATAG - Quarter 1 Tagalog"),
+    ],
     days: [
       {
         focus: "The relationship",
@@ -659,7 +667,9 @@ const SPECS: LessonSpec[] = [
       "Find a missing angle of a polygon",
     ],
     documents: [LE3],
-    videos: [],
+    videos: [
+      video("0KRMtjuJHg8", "Grade 7 MATH Term 1 Week 3: Determining Measures of Angles of a Polygon | MATATAG Quarter 1 Tagalog"),
+    ],
     days: [
       {
         focus: "Sum of the interior angles and missing angles",
@@ -728,7 +738,9 @@ const SPECS: LessonSpec[] = [
       "Determine the number of sides of a regular polygon from its angle",
     ],
     documents: [LE3],
-    videos: [],
+    videos: [
+      video("0KRMtjuJHg8", "Grade 7 MATH Term 1 Week 3: Determining Measures of Angles of a Polygon | MATATAG Quarter 1 Tagalog"),
+    ],
     days: [
       {
         focus: "Each angle of a regular polygon",
@@ -821,7 +833,9 @@ const SPECS: LessonSpec[] = [
       "Find the new value after a given percentage increase",
     ],
     documents: [LE4],
-    videos: [],
+    videos: [
+      video("xwEsbQ_sx7U", "Grade 7 MATH Term 1 Week 4: Percentage Increase | MATATAG - First Term/Quarter 1 (Tagalog Tutorial)"),
+    ],
     days: [
       {
         focus: "Percentage increase",
@@ -880,7 +894,9 @@ const SPECS: LessonSpec[] = [
       "Find the new value after a given percentage decrease",
     ],
     documents: [LE4],
-    videos: [],
+    videos: [
+      video("xxRPQ8cI9FQ", "Grade 7 MATH Term 1 Week 4: Percentage Decrease | MATATAG - First Term/Quarter 1 (Tagalog Tutorial)"),
+    ],
     days: [
       {
         focus: "Percentage decrease",
@@ -941,7 +957,9 @@ const SPECS: LessonSpec[] = [
     description: "Find the discount and the sale price of an item using percentage.",
     learningObjectives: ["Define discount, sale price and original (selling) price", "Find the discount and the sale price"],
     documents: [LE5],
-    videos: [],
+    videos: [
+      video("8q7Iy45ReZ8", "Grade 7 MATH Term 1 Week 4: Discount & Sale Price Solving Money Problems | MATATAG Quarter 1 Tagalog"),
+    ],
     days: [
       {
         focus: "Discount and sale price",
@@ -997,7 +1015,9 @@ const SPECS: LessonSpec[] = [
     description: "Solve problems on commission and sales tax using percentage.",
     learningObjectives: ["Define commission, commission rate and sales tax (VAT)", "Solve problems on commission and sales tax"],
     documents: [LE5],
-    videos: [],
+    videos: [
+      video("SGBIughMGDA", "Grade 7 MATH Term 1 Week 4-5: Commission & Sales Tax Solving Money Problems MATATAG Quarter1 Tagalog"),
+    ],
     days: [
       {
         focus: "Commission and sales tax",
@@ -1059,7 +1079,9 @@ const SPECS: LessonSpec[] = [
       "Solve for the principal, the rate or the time",
     ],
     documents: [LE5],
-    videos: [],
+    videos: [
+      video("ryili_70Et0", "Grade 7 MATH Term 1 Week 4-5: Simple Interest Rate Solving Money Problems MATATAG Quarter 1 Tagalog"),
+    ],
     days: [
       {
         focus: "Simple interest",
@@ -1132,7 +1154,9 @@ const SPECS: LessonSpec[] = [
       "Create a formula for a daily personal financial plan",
     ],
     documents: [LE5],
-    videos: [],
+    videos: [
+      video("VrX2fWUu_MM", "Grade 7 MATH Term 1 Week 5: Creating Financial Plan - Budget Pie Chart | MATATAG Quarter 1 Tagalog"),
+    ],
     days: [
       {
         focus: "Your daily income, expenses and savings",
@@ -1211,7 +1235,9 @@ const SPECS: LessonSpec[] = [
     description: "Tell rates from ratios, and explain where rates are used.",
     learningObjectives: ["Define a rate and give examples", "Explain the uses of rates"],
     documents: [LE6],
-    videos: [],
+    videos: [
+      video("71ZGRMp6cK4", "Grade 7 MATH Term 1 Week 6: Uses of Rates & Expressing Rates to Unit Rates MATATAG Quarter1 Tagalog"),
+    ],
     days: [
       {
         focus: "What a rate is and where it is used",
@@ -1265,7 +1291,9 @@ const SPECS: LessonSpec[] = [
     description: "Write a rate as a unit rate and use it to compare.",
     learningObjectives: ["Express a rate as a unit rate", "Compare two rates using unit rates"],
     documents: [LE6],
-    videos: [],
+    videos: [
+      video("71ZGRMp6cK4", "Grade 7 MATH Term 1 Week 6: Uses of Rates & Expressing Rates to Unit Rates MATATAG Quarter1 Tagalog"),
+    ],
     days: [
       {
         focus: "Unit rates",
@@ -1326,7 +1354,9 @@ const SPECS: LessonSpec[] = [
     description: "Solve rate problems, such as speed, distance and time, pay and fuel use.",
     learningObjectives: ["Solve problems involving rates, such as speed"],
     documents: [LE6],
-    videos: [],
+    videos: [
+      video("_Q7LzlTr3SM", "Grade 7 MATH Term 1 Week 6: Solving Problems Involving Rates & Unit Rates MATATAG Quarter1 Tagalog"),
+    ],
     days: [
       {
         focus: "Speed, distance and time",
@@ -1399,6 +1429,135 @@ const SPECS: LessonSpec[] = [
           summary(
             "Lesson summary",
             "- Speed = distance ÷ time, so distance = speed × time and time = distance ÷ speed.\n- To solve a rate problem, find the unit rate first, then multiply."
+          ),
+        ],
+      },
+    ],
+  },
+
+  // ================================================================ WEEK 7
+  // Written from the Budget of Work competencies for Week 7 only: no Lesson Exemplar was provided.
+  {
+    id: "lsn_g7q1_w7_l1",
+    termNumber: 1,
+    unitTitle: RATIONAL,
+    sequenceOrder: 1,
+    title: "Week 7 · Rational numbers as fractions, decimals and percentages",
+    description: "Describe a rational number as a fraction, a decimal or a percentage, and change from one form to another.",
+    learningObjectives: [
+      "Describe a rational number as a fraction, a decimal or a percentage",
+      "Change a rational number from one form to another",
+    ],
+    documents: [BOW_DOC],
+    videos: [
+      video("-8PmHV9nWsE", "Grade 7 MATH Term 1 Week 7: Rational Numbers | MATATAG - First Term/Quarter 1 (Tagalog Tutorial)"),
+    ],
+    days: [
+      {
+        focus: "Fractions, decimals and percentages",
+        blocks: [
+          text(
+            "Rational numbers",
+            "A **rational number** is a number that can be written as a fraction a/b, where a and b are integers and b is not zero. Integers, fractions and decimals that end or repeat are rational numbers.\n\nThe same rational number can be written as a **fraction**, a **decimal** or a **percentage**. For example, ³⁄₄ = 0.75 = 75%."
+          ),
+          text(
+            "Changing forms",
+            "- **Fraction to decimal:** divide the numerator by the denominator. ³⁄₅ = 3 ÷ 5 = 0.6.\n- **Decimal to percentage:** multiply by 100%. 0.6 × 100% = 60%.\n- **Percentage to decimal:** divide by 100. 60% = 0.60.\n- **Percentage to fraction:** write it over 100 and simplify. 60% = ⁶⁰⁄₁₀₀ = ³⁄₅."
+          ),
+          example(
+            "Worked example: One number, three forms",
+            "Write ²⁄₅ as a decimal and as a percentage.",
+            ["Divide the numerator by the denominator: 2 ÷ 5 = 0.4.", "Multiply by 100%: 0.4 × 100% = 40%."],
+            "²⁄₅ = 0.4 = 40%."
+          ),
+          example(
+            "Worked example: From a percentage to a fraction",
+            "Write 35% as a fraction in simplest form and as a decimal.",
+            ["35% = ³⁵⁄₁₀₀. Divide the numerator and denominator by 5 to get ⁷⁄₂₀.", "As a decimal, 35 ÷ 100 = 0.35."],
+            "35% = ⁷⁄₂₀ = 0.35."
+          ),
+          checkpoint(
+            "Checkpoint: Fraction to decimal",
+            "What is ³⁄₅ as a decimal?",
+            ["0.35", "0.5", "0.6", "1.6"],
+            "0.6",
+            "Divide the numerator by the denominator: 3 ÷ 5 = 0.6."
+          ),
+          checkpoint(
+            "Checkpoint: Decimal to percentage",
+            "What is 0.45 as a percentage?",
+            ["0.45%", "4.5%", "45%", "450%"],
+            "45%",
+            "Multiply by 100%: 0.45 × 100% = 45%."
+          ),
+          checkpoint(
+            "Checkpoint: Percentage to fraction",
+            "What is 60% as a fraction in simplest form?",
+            ["⁶⁄₁₀", "³⁄₅", "⁶⁄₅", "¹⁄₆"],
+            "³⁄₅",
+            "60% = ⁶⁰⁄₁₀₀. Dividing the numerator and denominator by 20 gives ³⁄₅."
+          ),
+          summary(
+            "Lesson summary",
+            "- A rational number can be written as a fraction of two integers (the denominator is not zero).\n- Fraction to decimal: divide. Decimal to percentage: multiply by 100%. Percentage to decimal: divide by 100.\n- ³⁄₄ = 0.75 = 75% are three forms of one number."
+          ),
+        ],
+      },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w7_l2",
+    termNumber: 1,
+    unitTitle: RATIONAL,
+    sequenceOrder: 2,
+    title: "Week 7 · Order rational numbers on a number line",
+    description: "Compare rational numbers and place them in order on a number line.",
+    learningObjectives: ["Compare rational numbers", "Order rational numbers on a number line"],
+    documents: [],
+    videos: [
+      video("lz4d_qN4F4E", "Grade 7 MATH Term 1 Week 7: Arranging Rational Numbers on Number Line | MATATAG Quarter 1 (Tagalog)"),
+    ],
+    days: [
+      {
+        focus: "Comparing and ordering rational numbers",
+        blocks: [
+          text(
+            "Comparing and ordering",
+            "On a number line, numbers to the right are greater and numbers to the left are less.\n\nTo compare rational numbers, write them all in the **same form**, usually decimals, then compare.\n\nFor negative numbers, the one that is farther from zero is the **smaller** number. So −0.75 < −0.5."
+          ),
+          example(
+            "Worked example: Order from least to greatest",
+            "Order −½, 0.3, ²⁄₅ and −0.75 from least to greatest.",
+            [
+              "Write each as a decimal: −½ = −0.5, 0.3, ²⁄₅ = 0.4 and −0.75.",
+              "The negatives are less than the positives. Of the negatives, −0.75 is farther from zero, so it is the least.",
+              "Order: −0.75, −0.5, 0.3, 0.4.",
+            ],
+            "−0.75, −½, 0.3, ²⁄₅."
+          ),
+          example(
+            "Worked example: Compare two numbers",
+            "Which is greater, ³⁄₄ or 0.7?",
+            ["Write ³⁄₄ as a decimal: 3 ÷ 4 = 0.75.", "Compare 0.75 and 0.70. 0.75 is greater."],
+            "³⁄₄ is greater than 0.7."
+          ),
+          checkpoint(
+            "Checkpoint: Greatest",
+            "Which is the greatest: 0.6, ⁵⁄₈ or 60.5%?",
+            ["0.6", "⁵⁄₈", "60.5%", "They are equal"],
+            "⁵⁄₈",
+            "Write each as a decimal: 0.6, 0.625 and 0.605. The greatest is 0.625, which is ⁵⁄₈."
+          ),
+          checkpoint(
+            "Checkpoint: Least",
+            "Which is the least: −0.2, −¼ or 0.1?",
+            ["−0.2", "−¼", "0.1", "They are equal"],
+            "−¼",
+            "Write each as a decimal: −0.2, −0.25 and 0.1. The farthest below zero is −0.25, so −¼ is the least."
+          ),
+          summary(
+            "Lesson summary",
+            "- Write rational numbers in the same form, usually decimals, to compare them.\n- On a number line, the number on the right is greater.\n- For negative numbers, the one farther from zero is smaller."
           ),
         ],
       },
