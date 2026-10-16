@@ -26,8 +26,8 @@ Set these in the host's dashboard. Never commit real values.
 
 ## Before the first public visitor
 
-1. **Use a fresh database if you can.** Run `npx prisma migrate deploy` (Render does this before each
-   start through `preDeployCommand`). A database that already has tables from `prisma db push` must
+1. **Use a fresh database if you can.** Run `npx prisma migrate deploy` (the container does this itself each time it
+   starts, see the `CMD` in the `Dockerfile`). A database that already has tables from `prisma db push` must
    first be marked as migrated: `npx prisma migrate resolve --applied 0001_baseline`. Back it up first.
 2. **Secure any database that was ever seeded.** The demo accounts (`student@`, `teacher@`,
    `admin@tuklas.ai`) have a password that was published in this repository's history.

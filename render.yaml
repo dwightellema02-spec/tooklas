@@ -2,9 +2,9 @@ services:
   - type: web
     name: tuklas-ai
     runtime: docker
+    plan: free # change to starter for an always-on service
+    region: singapore
     healthCheckPath: /api/health
-    # Applies pending database migrations before each new version starts.
-    preDeployCommand: npx prisma migrate deploy
     envVars:
       - key: NODE_ENV
         value: production
