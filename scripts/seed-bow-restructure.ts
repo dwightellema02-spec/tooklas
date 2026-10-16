@@ -70,8 +70,21 @@ async function main() {
   try {
     await prisma.$transaction(
       async (tx) => {
-        const grade = await tx.grade.findFirst({ where: { level: 7, subject: { code: "MATH" } } });
-        if (!grade) throw new Error("Grade 7 Mathematics was not found. Run the base seed first.");
+        // A new deployment has no subject or grade yet (the demo seed is never run in production).
+        let grade = await tx.grade.findFirst({ where: { level: 7, subject: { code: "MATH" } } });
+        if (!grade) {
+          const subject = await tx.subject.upsert({
+            where: { code: "MATH" },
+            update: {},
+            create: {
+              code: "MATH",
+              name: "Mathematics",
+              description: "Department of Education MATATAG Mathematics Curriculum",
+            },
+          });
+          grade = await tx.grade.create({ data: { subjectId: subject.id, level: 7, name: "Grade 7" } });
+          log("  + subject Mathematics and Grade 7 created");
+        }
 
         // ---- 1. Terms 1-3
         const terms = new Map<number, { id: string }>();
