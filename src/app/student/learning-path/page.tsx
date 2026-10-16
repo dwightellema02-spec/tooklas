@@ -362,6 +362,8 @@ export default function StudentLearningPathPage({ onNavigate }: StudentLearningP
                       <div>
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            {node.termNumber ? `Term ${node.termNumber} · ` : ""}
+                            {node.unitTitle ? `${node.unitTitle} · ` : ""}
                             Lesson {node.sequenceOrder}
                           </span>
                           <span className="text-slate-300">•</span>

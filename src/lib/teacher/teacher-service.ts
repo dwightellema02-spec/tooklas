@@ -364,17 +364,8 @@ export class TeacherService {
           }
 
           const studentIds = cls.enrollments.map((e) => e.studentId);
-          const students = cls.enrollments.map((e) => ({
-            id: e.student.id,
-            name: e.student.name || "Student",
-            email: e.student.email,
-            gradeLevel: e.student.gradeLevel || 7,
-            currentLesson: null,
-            primarySkillMastery: null,
-            overallAccuracy: 0,
-            lastActivity: e.enrolledAt.toISOString(),
-            status: "ACTIVE" as const,
-          }));
+          // Same shape the student table expects (it needs classrooms, primaryMastery, lastActivityAt).
+          const students = await this.getEnrolledStudentsForClasses([classroomId]);
 
           const masteryDistribution = await this.aggregateMasteryDistribution(studentIds);
 

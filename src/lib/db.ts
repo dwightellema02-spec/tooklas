@@ -2504,6 +2504,8 @@ export const dbService = {
         title: lesson.title,
         description: lesson.description,
         unitId: lesson.unitId || lesson.unit?.id,
+        unitTitle: lesson.unit?.title,
+        termNumber: lesson.unit?.term?.termNumber,
         subjectId: (lesson as any).subjectId || lesson.unit?.subjectId,
         sequenceOrder: lesson.sequenceOrder,
         estimatedMinutes: lesson.estimatedMinutes,
