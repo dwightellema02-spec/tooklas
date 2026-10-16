@@ -1437,6 +1437,7 @@ const SPECS: LessonSpec[] = [
 
   // ================================================================ WEEK 7
   // Written from the Budget of Work competencies for Week 7 only: no Lesson Exemplar was provided.
+  // Negative numbers and integers are not used here: the Budget of Work introduces them in Term 2 (Weeks 9-10).
   {
     id: "lsn_g7q1_w7_l1",
     termNumber: 1,
@@ -1445,7 +1446,7 @@ const SPECS: LessonSpec[] = [
     title: "Week 7 · Rational numbers as fractions, decimals and percentages",
     description: "Describe a rational number as a fraction, a decimal or a percentage, and change from one form to another.",
     learningObjectives: [
-      "Describe a rational number as a fraction, a decimal or a percentage",
+      "Describe a given rational number as a fraction, a decimal or a percentage",
       "Change a rational number from one form to another",
     ],
     documents: [BOW_DOC],
@@ -1458,7 +1459,7 @@ const SPECS: LessonSpec[] = [
         blocks: [
           text(
             "Rational numbers",
-            "A **rational number** is a number that can be written as a fraction a/b, where a and b are integers and b is not zero. Integers, fractions and decimals that end or repeat are rational numbers.\n\nThe same rational number can be written as a **fraction**, a **decimal** or a **percentage**. For example, ³⁄₄ = 0.75 = 75%."
+            "A **rational number** is a number that can be written as a fraction, such as ³⁄₄ or ⁷⁄₂₀. Whole numbers, fractions and decimals that end (like 0.75) or repeat (like 0.333...) are rational numbers.\n\nThe same rational number can be written as a **fraction**, a **decimal** or a **percentage**. For example, ³⁄₄ = 0.75 = 75%."
           ),
           text(
             "Changing forms",
@@ -1499,7 +1500,7 @@ const SPECS: LessonSpec[] = [
           ),
           summary(
             "Lesson summary",
-            "- A rational number can be written as a fraction of two integers (the denominator is not zero).\n- Fraction to decimal: divide. Decimal to percentage: multiply by 100%. Percentage to decimal: divide by 100.\n- ³⁄₄ = 0.75 = 75% are three forms of one number."
+            "- A rational number can be written as a fraction. It can also be written as a decimal or a percentage.\n- Fraction to decimal: divide. Decimal to percentage: multiply by 100%. Percentage to decimal: divide by 100.\n- ³⁄₄ = 0.75 = 75% are three forms of one number."
           ),
         ],
       },
@@ -1511,29 +1512,39 @@ const SPECS: LessonSpec[] = [
     unitTitle: RATIONAL,
     sequenceOrder: 2,
     title: "Week 7 · Order rational numbers on a number line",
-    description: "Compare rational numbers and place them in order on a number line.",
-    learningObjectives: ["Compare rational numbers", "Order rational numbers on a number line"],
+    description: "Place rational numbers on a number line and put them in order.",
+    learningObjectives: ["Place rational numbers on a number line", "Order rational numbers"],
     documents: [],
     videos: [
       video("lz4d_qN4F4E", "Grade 7 MATH Term 1 Week 7: Arranging Rational Numbers on Number Line | MATATAG Quarter 1 (Tagalog)"),
     ],
     days: [
       {
-        focus: "Comparing and ordering rational numbers",
+        focus: "Placing and ordering rational numbers",
         blocks: [
           text(
-            "Comparing and ordering",
-            "On a number line, numbers to the right are greater and numbers to the left are less.\n\nTo compare rational numbers, write them all in the **same form**, usually decimals, then compare.\n\nFor negative numbers, the one that is farther from zero is the **smaller** number. So −0.75 < −0.5."
+            "The number line",
+            "On a number line, numbers to the right are greater and numbers to the left are less.\n\nTo place or compare rational numbers, write them all in the **same form**, usually decimals, then compare. Between 0 and 1, the number line can be split into equal parts: halves at 0.5, quarters at 0.25, 0.5 and 0.75."
+          ),
+          example(
+            "Worked example: Place on a number line",
+            "Place ¼, 0.5 and ¾ on a number line from 0 to 1.",
+            [
+              "Write each as a decimal: ¼ = 0.25, 0.5 and ¾ = 0.75.",
+              "Split the line from 0 to 1 into four equal parts. The marks are at 0.25, 0.5 and 0.75.",
+              "Put ¼ on the first mark, 0.5 on the second and ¾ on the third.",
+            ],
+            "¼ is at 0.25, 0.5 is at the middle, and ¾ is at 0.75."
           ),
           example(
             "Worked example: Order from least to greatest",
-            "Order −½, 0.3, ²⁄₅ and −0.75 from least to greatest.",
+            "Order ½, 0.3, ²⁄₅ and 0.75 from least to greatest.",
             [
-              "Write each as a decimal: −½ = −0.5, 0.3, ²⁄₅ = 0.4 and −0.75.",
-              "The negatives are less than the positives. Of the negatives, −0.75 is farther from zero, so it is the least.",
-              "Order: −0.75, −0.5, 0.3, 0.4.",
+              "Write each as a decimal: ½ = 0.5, 0.3, ²⁄₅ = 0.4 and 0.75.",
+              "Compare the decimals: 0.3 < 0.4 < 0.5 < 0.75.",
+              "Write the numbers in their original forms in that order.",
             ],
-            "−0.75, −½, 0.3, ²⁄₅."
+            "0.3, ²⁄₅, ½, 0.75."
           ),
           example(
             "Worked example: Compare two numbers",
@@ -1550,14 +1561,14 @@ const SPECS: LessonSpec[] = [
           ),
           checkpoint(
             "Checkpoint: Least",
-            "Which is the least: −0.2, −¼ or 0.1?",
-            ["−0.2", "−¼", "0.1", "They are equal"],
-            "−¼",
-            "Write each as a decimal: −0.2, −0.25 and 0.1. The farthest below zero is −0.25, so −¼ is the least."
+            "Which is the least: ³⁄₈, 0.35 or 36%?",
+            ["³⁄₈", "0.35", "36%", "They are equal"],
+            "0.35",
+            "Write each as a decimal: 0.375, 0.35 and 0.36. The least is 0.35."
           ),
           summary(
             "Lesson summary",
-            "- Write rational numbers in the same form, usually decimals, to compare them.\n- On a number line, the number on the right is greater.\n- For negative numbers, the one farther from zero is smaller."
+            "- Write rational numbers in the same form, usually decimals, to compare and order them.\n- On a number line, the number on the right is greater.\n- Split the space between 0 and 1 into equal parts to place fractions and decimals."
           ),
         ],
       },
