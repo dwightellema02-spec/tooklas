@@ -5,6 +5,7 @@
  *   npx tsx scripts/seed-bow-restructure.ts --pdf-dir "C:\Users\you\Downloads"          # dry run
  *   npx tsx scripts/seed-bow-restructure.ts --pdf-dir "C:\Users\you\Downloads" --apply  # write
  *
+ * Add --refresh-drafts to replace the content of draft lessons created by an earlier run.
  * The dry run performs every step inside a transaction and rolls it back, so it reports exactly
  * what --apply would do. The script is idempotent: a second run changes nothing.
  * Existing lessons are never overwritten, and nothing that holds lessons is ever deleted.
@@ -19,6 +20,7 @@ import { BOW_GRADE7_TERMS, INTEGER_LESSON_PLACEMENT, Q1_DRAFT_LESSONS } from "..
 
 const prisma = new PrismaClient();
 const apply = process.argv.includes("--apply");
+const refreshDrafts = process.argv.includes("--refresh-drafts");
 const pdfDirArg = process.argv.indexOf("--pdf-dir");
 const pdfDir = pdfDirArg > -1 ? process.argv[pdfDirArg + 1] : undefined;
 
@@ -229,6 +231,30 @@ async function main() {
               })),
             });
             log(`  + lesson created (DRAFT): ${l.id} "${l.title}" with ${l.blocks.length} blocks`);
+          } else if (refreshDrafts && lesson.status === "DRAFT") {
+            // Only drafts are refreshed. A lesson a teacher has moved to review or published is never touched.
+            await tx.lesson.update({
+              where: { id: l.id },
+              data: {
+                title: l.title,
+                description: l.description,
+                learningObjectives: l.learningObjectives,
+                estimatedMinutes: l.estimatedMinutes,
+              },
+            });
+            await tx.lessonContentBlock.deleteMany({ where: { lessonId: l.id } });
+            await tx.lessonContentBlock.createMany({
+              data: l.blocks.map((b, i) => ({
+                id: `${l.id}_b${String(i + 1).padStart(2, "0")}`,
+                lessonId: l.id,
+                type: b.type,
+                sequenceOrder: i + 1,
+                title: b.title,
+                content: b.content,
+                metadata: b.metadata ? JSON.stringify(b.metadata) : null,
+              })),
+            });
+            log(`  ~ draft lesson refreshed: ${l.id} with ${l.blocks.length} blocks`);
           } else {
             log(`  = lesson exists, left untouched: ${l.id}`);
           }

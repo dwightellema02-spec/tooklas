@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth, authFetch } from "@/lib/auth/auth-context";
+import { UserRoleManager } from "./UserRoleManager";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -172,6 +173,8 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
             <span>Sign Out</span>
           </Button>
         </div>
+
+        <UserRoleManager />
 
         {/* Phase 2 Admin Status Card */}
         <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs mb-8">

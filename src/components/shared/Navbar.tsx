@@ -68,17 +68,19 @@ export function Navbar({ currentPath = "/", onNavigate }: NavbarProps) {
                 <Logo size="md" />
               </a>
 
-              {/* Database Connection Indicator */}
-              <div
-                title={dbStatus?.details || "Checking database..."}
-                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border bg-slate-50 border-slate-200 text-slate-600 cursor-help"
-              >
-                <Database className="w-3 h-3 text-slate-500" />
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>
-                  {dbStatus?.provider === "neon-postgresql" ? "Neon PostgreSQL" : "Sandbox DB"}
-                </span>
-              </div>
+              {/* Database Connection Indicator (staff only) */}
+              {(user?.role === "TEACHER" || user?.role === "ADMIN") && (
+                <div
+                  title={dbStatus?.details || "Checking database..."}
+                  className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border bg-slate-50 border-slate-200 text-slate-600 cursor-help"
+                >
+                  <Database className="w-3 h-3 text-slate-500" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>
+                    {dbStatus?.provider === "neon-postgresql" ? "PostgreSQL" : "Sandbox DB"}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Desktop Navigation */}

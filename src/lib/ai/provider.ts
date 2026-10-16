@@ -1307,8 +1307,8 @@ export class LocalTutorEngine implements AIProvider {
       return {
         text: JSON.stringify({
           responseType: "HINT",
-          message: "Lutasin natin ang problemang ito nang magkasama. Simulan sa pagsusuri ng mga tuntunin sa iyong kasalukuyang aralin para sa operasyong ito.",
-          guidingQuestion: "Ano ang unang operasyon o paghahambing na kailangan mong gawin?",
+          message: "Lutasin natin ito nang magkasama. Simulan sa muling pagbasa ng pangunahing ideya sa iyong kasalukuyang aralin.",
+          guidingQuestion: "Ano ang unang hinihingi ng problema na hanapin o ihambing?",
           hintLevel: 1,
           encouragement: "Kaya mo iyan — himayin natin ito nang magkasama.",
           nextStep: "Pagtuunan ng pansin ang unang hakbang ng problema.",
@@ -1324,8 +1324,8 @@ export class LocalTutorEngine implements AIProvider {
     return {
       text: JSON.stringify({
         responseType: "HINT",
-        message: "Let's work through this problem together. Start by checking the rules in your current lesson for this operation.",
-        guidingQuestion: "What is the first operation or comparison you need to make?",
+        message: "Let's work through this together. Start by re-reading the key idea in your current lesson.",
+        guidingQuestion: "What is the first thing the problem asks you to find or compare?",
         hintLevel: 1,
         encouragement: "You're doing fine — let's break it down together.",
         nextStep: "Focus on the first step of the problem.",

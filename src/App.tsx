@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { AuthProvider } from "@/lib/auth/auth-context";
+import { AuthProvider, useAuth } from "@/lib/auth/auth-context";
+import { canUserAccessPath } from "@/lib/auth/rbac";
 import RootLayout from "@/app/layout";
 import LandingPage from "@/app/page";
 import StudentPage from "@/app/student/page";
@@ -33,6 +34,61 @@ import TeacherResearchPage from "@/app/teacher/research/page";
 import AdminPage from "@/app/admin/page";
 import VoiceLabPage from "@/app/voice-lab/page";
 import NotFound from "@/app/not-found";
+
+// Pages that need a signed-in user. The server enforces access to data; this keeps the screens
+// themselves from rendering for visitors who are not signed in or whose role does not allow them.
+function requiresSignIn(path: string): boolean {
+  return (
+    path.startsWith("/student") ||
+    path.startsWith("/teacher") ||
+    path.startsWith("/admin") ||
+    path.startsWith("/voice-lab")
+  );
+}
+
+function RouteGuard({
+  path,
+  onNavigate,
+  children,
+}: {
+  path: string;
+  onNavigate: (path: string) => void;
+  children: React.ReactNode;
+}) {
+  const { user, loading } = useAuth();
+
+  if (!requiresSignIn(path)) return <>{children}</>;
+
+  if (loading) {
+    return (
+      <div className="py-24 text-center text-sm text-slate-500" role="status">
+        Checking your session...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto py-24 px-4 text-center space-y-4">
+        <h1 className="text-2xl font-bold text-slate-900">Please sign in</h1>
+        <p className="text-sm text-slate-600">You need to sign in to see this page.</p>
+        <button
+          type="button"
+          onClick={() => onNavigate("/")}
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold min-h-[44px]"
+        >
+          Go to the home page
+        </button>
+      </div>
+    );
+  }
+
+  if (!canUserAccessPath(user.role, path)) {
+    return <NotFound onNavigateHome={() => onNavigate("/")} />;
+  }
+
+  return <>{children}</>;
+}
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -153,7 +209,9 @@ export default function App() {
   return (
     <AuthProvider>
       <RootLayout currentPath={currentPath} onNavigate={navigate}>
-        {renderCurrentView()}
+        <RouteGuard path={currentPath} onNavigate={navigate}>
+          {renderCurrentView()}
+        </RouteGuard>
       </RootLayout>
     </AuthProvider>
   );

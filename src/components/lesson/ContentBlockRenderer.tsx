@@ -7,7 +7,7 @@ import { ExampleBlock } from "./blocks/ExampleBlock";
 import { QuestionBlock } from "./blocks/QuestionBlock";
 import { InteractiveBlock } from "./blocks/InteractiveBlock";
 import { HintBlock } from "./blocks/HintBlock";
-import { CheckpointBlock } from "./blocks/CheckpointBlock";
+import { CheckpointBlock, type CheckpointResult } from "./blocks/CheckpointBlock";
 import { PracticeBlock } from "./blocks/PracticeBlock";
 import { SummaryBlock } from "./blocks/SummaryBlock";
 
@@ -25,7 +25,7 @@ export interface ContentBlockRendererProps {
   block: LessonContentBlockData;
   isCompleted?: boolean;
   onComplete?: () => void;
-  onAttemptCheckpoint?: (blockId: string, answer: string, isCorrect: boolean, feedback: string) => void;
+  onAttemptCheckpoint?: (blockId: string, answer: string) => Promise<CheckpointResult | null>;
   previousAttempt?: { answer: string; isCorrect: boolean; feedback?: string };
   onAskAITutor?: (ctx: { questionPrompt: string; studentAnswer?: string; explanation?: string }) => void;
   onNavigate?: (path: string) => void;

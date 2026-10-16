@@ -59,6 +59,25 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
   res.setHeader("Permissions-Policy", "microphone=(self), camera=(), geolocation=()");
+  if (isProd) {
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https://img.youtube.com https://i.ytimg.com",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "frame-src https://www.youtube-nocookie.com https://www.youtube.com",
+        "media-src 'self' blob:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join("; ")
+    );
+  }
   const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
   if (isProd || isHttps) {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
@@ -111,8 +130,21 @@ app.use("/api", (req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.use(express.json({ limit: "30mb" }));
-app.use(express.urlencoded({ limit: "30mb", extended: true }));
+const documentUploadPath = /^\/api\/lessons\/[^/]+\/documents\/?$/;
+const smallJson = express.json({ limit: "1mb" });
+const documentJson = express.json({ limit: "30mb" });
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "POST" && documentUploadPath.test(req.path)) {
+    // Only teachers and admins may send a large body; everyone else is refused before it is read.
+    const session = getSessionFromRequest(req);
+    if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
+      return res.status(403).json({ error: "Forbidden: Teacher or Administrator access required." });
+    }
+    return documentJson(req, res, next);
+  }
+  return smallJson(req, res, next);
+});
+app.use(express.urlencoded({ limit: "1mb", extended: true }));
 app.use(jsonParsingErrorHandler);
 
 // Teacher documents (PDF/DOCX) keep their extracted text in `notes` for the AI tutor.
@@ -125,6 +157,54 @@ function withoutDocumentText<T extends { resources?: any[] }>(lesson: T): T {
       r.type === "PDF" || r.type === "DOCUMENT" ? { ...r, notes: undefined } : r
     ),
   };
+}
+
+// Checkpoint and question blocks carry their answer key in metadata. Students never receive it:
+// answers are graded on the server and revealed only in the response to an attempt.
+const ANSWER_BLOCK_TYPES = new Set(["CHECKPOINT", "QUESTION"]);
+
+function withoutAnswerKey(block: any) {
+  if (!ANSWER_BLOCK_TYPES.has(block?.type) || !block.metadata) return block;
+  try {
+    const asString = typeof block.metadata === "string";
+    const meta = asString ? JSON.parse(block.metadata) : { ...block.metadata };
+    delete meta.correctAnswer;
+    delete meta.explanation;
+    return { ...block, metadata: asString ? JSON.stringify(meta) : meta };
+  } catch {
+    return block;
+  }
+}
+
+// What a student, or a visitor who is not signed in, may receive for a lesson.
+function forStudents<T extends { resources?: any[]; contentBlocks?: any[] }>(lesson: T): T {
+  const safe = withoutDocumentText(lesson);
+  return safe?.contentBlocks ? { ...safe, contentBlocks: safe.contentBlocks.map(withoutAnswerKey) } : safe;
+}
+
+// Curriculum outline for the signed-in user: staff see lessons (a teacher not other teachers' drafts),
+// everyone else sees published lessons only, without lesson content.
+function curriculumForUser(subjects: any[], session: SessionPayload | null) {
+  const isStaff = session && (session.role === "TEACHER" || session.role === "ADMIN");
+  const visible = (l: any) => {
+    if (!isStaff) return l.status === "PUBLISHED";
+    return !(session!.role === "TEACHER" && l.status === "DRAFT" && l.authorId && l.authorId !== session!.userId);
+  };
+  return subjects.map((subj) => ({
+    ...subj,
+    grades: (subj.grades || []).map((g: any) => ({
+      ...g,
+      terms: (g.terms || []).map((t: any) => ({
+        ...t,
+        units: (t.units || []).map((u: any) => ({
+          ...u,
+          lessons: (u.lessons || [])
+            .filter(visible)
+            .map((l: any) => (isStaff ? l : { ...forStudents(l), contentBlocks: [] })),
+        })),
+      })),
+    })),
+  }));
 }
 
 // Helper to extract session from Cookie or Bearer header
@@ -402,21 +482,25 @@ app.get("/api/auth/me", async (req: Request, res: Response) => {
 // API: DATABASE & CURRICULUM VERIFICATION ROUTES
 // -------------------------------------------------------------
 
-app.get("/api/health", async (_req: Request, res: Response) => {
+app.get("/api/health", async (req: Request, res: Response) => {
   const status = await dbService.getStatus();
-  return res.json({
-    status: "ok",
-    database: status,
-    environment: getSanitizedEnvStatus(),
+  const session = getSessionFromRequest(req);
+  const isAdmin = session?.role === "ADMIN";
+  const healthy = status.connected;
+  // Load balancers and uptime checks need a failing status code when the database is down.
+  return res.status(healthy ? 200 : 503).json({
+    status: healthy ? "ok" : "degraded",
+    database: isAdmin ? status : { connected: status.connected, provider: status.provider },
+    ...(isAdmin ? { environment: getSanitizedEnvStatus() } : {}),
     timestamp: new Date().toISOString(),
-    version: "0.2.0-phase14",
+    version: "0.2.0-pilot",
   });
 });
 
-app.get("/api/curriculum", async (_req: Request, res: Response) => {
+app.get("/api/curriculum", async (req: Request, res: Response) => {
   try {
     const curriculum = await dbService.getCurriculum();
-    return res.json({ data: curriculum });
+    return res.json({ data: curriculumForUser(curriculum, getSessionFromRequest(req)) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to load curriculum";
     return res.status(500).json({ error: message });
@@ -439,7 +523,7 @@ app.get("/api/lessons", async (req: Request, res: Response) => {
         (l) => !(l.status === "DRAFT" && l.authorId && l.authorId !== session.userId)
       );
     }
-    return res.json({ data: isStaff ? lessons : lessons.map(withoutDocumentText) });
+    return res.json({ data: isStaff ? lessons : lessons.map(forStudents) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to load lessons";
     return res.status(500).json({ error: message });
@@ -471,7 +555,7 @@ app.get("/api/lessons/:id", async (req: Request, res: Response) => {
       });
     }
 
-    return res.json({ data: isStaff ? lesson : withoutDocumentText(lesson) });
+    return res.json({ data: isStaff ? lesson : forStudents(lesson) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to retrieve lesson";
     return res.status(500).json({ error: message });
@@ -1255,22 +1339,45 @@ app.post(["/api/student/lessons/:id/checkpoint", "/api/student/lessons/:id/check
     }
     const userId = session.userId;
     const { id } = req.params;
-    const { blockId, answer, isCorrect, feedback } = req.body;
+    const { blockId, answer } = req.body;
 
-    if (!blockId || answer === undefined) {
-      return res.status(400).json({ error: "blockId and answer are required" });
+    if (!blockId || answer === undefined || typeof answer !== "string" || answer.length > 500) {
+      return res.status(400).json({ error: "blockId and a short text answer are required" });
     }
+
+    // Grade on the server: the client's claim of correctness is never trusted.
+    const lesson: any = await dbService.getLessonById(id);
+    const block = lesson?.contentBlocks?.find((b: any) => b.id === blockId);
+    if (!lesson || !block || !ANSWER_BLOCK_TYPES.has(block.type)) {
+      return res.status(404).json({ error: "Checkpoint not found in this lesson." });
+    }
+    if (session.role === "STUDENT" && lesson.status !== "PUBLISHED") {
+      return res.status(403).json({ error: "This lesson has not been published yet." });
+    }
+    let meta: any = {};
+    try {
+      meta = typeof block.metadata === "string" ? JSON.parse(block.metadata) : block.metadata || {};
+    } catch {
+      meta = {};
+    }
+    const correctAnswer = String(meta.correctAnswer ?? "");
+    if (!correctAnswer) {
+      return res.status(422).json({ error: "This checkpoint has no answer key yet." });
+    }
+    const norm = (v: string) => v.trim().toLowerCase();
+    const isCorrect = norm(answer) === norm(correctAnswer);
+    const feedback = String(meta.explanation ?? "");
 
     const attempt = await dbService.submitCheckpointAttempt({
       userId,
       lessonId: id,
       blockId,
       answer,
-      isCorrect: Boolean(isCorrect),
+      isCorrect,
       feedback,
     });
 
-    return res.json({ data: attempt });
+    return res.json({ data: attempt, result: { isCorrect, feedback, correctAnswer } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to record checkpoint attempt";
     return res.status(500).json({ error: message });
@@ -1949,8 +2056,11 @@ app.get(["/api/ai/conversations/:id", "/api/ai/conversation/:id"], async (req: R
 });
 
 // Get AI Tutor Teacher Settings
-app.get("/api/ai/settings", async (_req: Request, res: Response) => {
+app.get("/api/ai/settings", async (req: Request, res: Response) => {
   try {
+    if (!getSessionFromRequest(req)) {
+      return res.status(401).json({ error: "Unauthorized: Please sign in." });
+    }
     const settings = await dbService.getTeacherAISettings();
     return res.json({ data: settings });
   } catch (error: unknown) {
@@ -2555,6 +2665,89 @@ app.get("/api/teacher/classes/:classId", async (req: Request, res: Response) => 
     const message = error instanceof Error ? error.message : "Failed to load class detail";
     const status = message.includes("Forbidden") ? 403 : 500;
     return res.status(status).json({ error: message });
+  }
+});
+
+// Teacher creates a class
+app.post("/api/teacher/classes", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
+      return res.status(403).json({ error: "Forbidden: Teacher access required." });
+    }
+    const classroom = await TeacherService.createClassroom(session.userId, session.role, req.body || {});
+    return res.status(201).json({ data: classroom });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to create class";
+    return res.status(message.includes("required") ? 400 : 500).json({ error: message });
+  }
+});
+
+// Teacher enrolls a registered student by email
+app.post("/api/teacher/classes/:classId/students", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
+      return res.status(403).json({ error: "Forbidden: Teacher access required." });
+    }
+    const student = await TeacherService.enrollStudentByEmail(req.params.classId, session.userId, session.role, req.body?.email);
+    return res.status(201).json({ data: student });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to enroll student";
+    const status = message.includes("Forbidden") ? 403 : message.includes("not found") || message.includes("No student") ? 404 : message.includes("required") ? 400 : 500;
+    return res.status(status).json({ error: message });
+  }
+});
+
+// Teacher removes a student from a class
+app.delete("/api/teacher/classes/:classId/students/:studentId", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
+      return res.status(403).json({ error: "Forbidden: Teacher access required." });
+    }
+    await TeacherService.removeStudentFromClass(req.params.classId, session.userId, session.role, req.params.studentId);
+    return res.json({ success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to remove student";
+    return res.status(message.includes("Forbidden") ? 403 : message.includes("not found") ? 404 : 500).json({ error: message });
+  }
+});
+
+// Admin lists accounts
+app.get("/api/admin/users", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session || session.role !== "ADMIN") {
+      return res.status(403).json({ error: "Forbidden: Administrator access required." });
+    }
+    return res.json({ data: await dbService.listUsers() });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to list users";
+    return res.status(500).json({ error: message });
+  }
+});
+
+// Admin changes an account's role (an admin cannot change their own role, so the last admin is never locked out)
+app.patch("/api/admin/users/:id/role", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session || session.role !== "ADMIN") {
+      return res.status(403).json({ error: "Forbidden: Administrator access required." });
+    }
+    const role = String(req.body?.role || "").toUpperCase();
+    if (!["STUDENT", "TEACHER", "ADMIN"].includes(role)) {
+      return res.status(400).json({ error: "Role must be STUDENT, TEACHER or ADMIN." });
+    }
+    if (req.params.id === session.userId) {
+      return res.status(400).json({ error: "You cannot change your own role." });
+    }
+    const updated = await dbService.updateUserRole(req.params.id, role as UserRole);
+    safeLog.info("ADMIN ROLE CHANGE", { by: session.userId, target: updated.id, role: updated.role });
+    return res.json({ data: updated });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to update role";
+    return res.status(message.includes("not found") ? 404 : 500).json({ error: message });
   }
 });
 

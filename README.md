@@ -253,13 +253,18 @@ Lessons on the student learning path convey status using clear accessible iconog
 
 ---
 
-## 4. Pre-Seeded Test Credentials
+## 4. Pre-Seeded Test Accounts (development only)
 
-| Role | Email | Password | Allowed Access Areas |
-| :--- | :--- | :--- | :--- |
-| **Student** | `student@tuklas.ai` | `Tuklas2026!` | `/`, `/student`, `/student/learning-path`, `/student/lessons/:id` |
-| **Teacher** | `teacher@tuklas.ai` | `Tuklas2026!` | `/`, `/student`, `/teacher`, `/teacher/curriculum/*`, `/teacher/lessons/*` |
-| **Admin** | `admin@tuklas.ai` | `Tuklas2026!` | Full platform access |
+`npm run prisma:seed` creates demo accounts for local development. The password is set by the
+`DEMO_SEED_PASSWORD` environment variable. In production the seed refuses to run without it, and
+any database that was ever seeded must be secured with `scripts/secure-demo-accounts.ts`
+(see `docs/DEPLOYMENT.md`). Never use demo accounts on a public site.
+
+| Role | Email | Allowed Access Areas |
+| :--- | :--- | :--- |
+| **Student** | `student@tuklas.ai` | `/`, `/student`, `/student/learning-path`, `/student/lessons/:id` |
+| **Teacher** | `teacher@tuklas.ai` | `/`, `/student`, `/teacher`, `/teacher/curriculum/*`, `/teacher/lessons/*` |
+| **Admin** | `admin@tuklas.ai` | Full platform access |
 
 ---
 

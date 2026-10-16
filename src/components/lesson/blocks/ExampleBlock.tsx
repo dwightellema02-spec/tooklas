@@ -180,10 +180,10 @@ export function ExampleBlock({ title, content, metadata }: ExampleBlockProps) {
                       <p className="text-slate-600 leading-relaxed">
                         {steps[currentStepIndex].rationale ||
                           (currentStepIndex === 0
-                            ? "Identify the key components and determine whether the numbers share the same signs or opposite signs."
+                            ? "Read the problem carefully and identify what is given and what you need to find."
                             : isLastStep
                             ? "Combine the processed parts to reach the verified solution."
-                            : "Apply the mathematical property to simplify the expression systematically.")}
+                            : "Apply the relevant rule or property to move toward the answer.")}
                       </p>
                     </div>
                   </div>

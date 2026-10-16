@@ -155,6 +155,104 @@ export class TeacherService {
   /**
    * Retrieve authorized classes for teacher
    */
+  /**
+   * Loads a classroom the user may manage: its own teacher, or an admin.
+   */
+  private static async requireManagedClassroom(classId: string, teacherId: string, userRole: string) {
+    if (userRole !== "TEACHER" && userRole !== "ADMIN") {
+      throw new Error("Forbidden: Teacher access required.");
+    }
+    const cls = hasValidDatabaseUrl
+      ? await prisma.classroom.findUnique({ where: { id: classId } })
+      : (fallbackStore.classrooms || []).find((c) => c.id === classId);
+    if (!cls) throw new Error("Class not found.");
+    if (userRole !== "ADMIN" && cls.teacherId !== teacherId) {
+      throw new Error("Forbidden: You do not manage this class.");
+    }
+    return cls;
+  }
+
+  /**
+   * A teacher (or admin) creates a class they will manage.
+   */
+  static async createClassroom(
+    teacherId: string,
+    userRole: string,
+    data: { name?: unknown; gradeLevel?: unknown; schoolYear?: unknown }
+  ) {
+    if (userRole !== "TEACHER" && userRole !== "ADMIN") {
+      throw new Error("Forbidden: Teacher access required.");
+    }
+    const name = typeof data.name === "string" ? data.name.trim() : "";
+    if (!name || name.length > 100) throw new Error("A class name of up to 100 characters is required.");
+    const gradeLevel =
+      typeof data.gradeLevel === "number" && Number.isInteger(data.gradeLevel) && data.gradeLevel >= 1 && data.gradeLevel <= 12
+        ? data.gradeLevel
+        : 7;
+    const schoolYear =
+      typeof data.schoolYear === "string" && data.schoolYear.trim() ? data.schoolYear.trim().slice(0, 20) : "2026-2027";
+
+    if (hasValidDatabaseUrl) {
+      return prisma.classroom.create({ data: { name, gradeLevel, schoolYear, teacherId } });
+    }
+    const classroom = {
+      id: `cls_${Date.now()}`,
+      name,
+      gradeLevel,
+      subject: "Mathematics",
+      schoolYear,
+      teacherId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    fallbackStore.classrooms.push(classroom);
+    return classroom;
+  }
+
+  /**
+   * Enrolls a registered student in a class by email address.
+   */
+  static async enrollStudentByEmail(classId: string, teacherId: string, userRole: string, email: unknown) {
+    const cls = await this.requireManagedClassroom(classId, teacherId, userRole);
+    const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    if (!cleanEmail) throw new Error("A student email is required.");
+
+    const student = await dbService.findUserByEmail(cleanEmail);
+    if (!student || student.role !== "STUDENT") {
+      throw new Error("No student account was found with that email.");
+    }
+
+    if (hasValidDatabaseUrl) {
+      await prisma.classroomEnrollment.upsert({
+        where: { classroomId_studentId: { classroomId: cls.id, studentId: student.id } },
+        create: { classroomId: cls.id, studentId: student.id },
+        update: {},
+      });
+    } else if (!fallbackStore.classroomEnrollments.some((e) => e.classroomId === cls.id && e.studentId === student.id)) {
+      fallbackStore.classroomEnrollments.push({
+        id: `enr_${Date.now()}`,
+        classroomId: cls.id,
+        studentId: student.id,
+        enrolledAt: new Date(),
+      });
+    }
+    return { id: student.id, name: student.name, email: student.email };
+  }
+
+  /**
+   * Removes a student from a class.
+   */
+  static async removeStudentFromClass(classId: string, teacherId: string, userRole: string, studentId: string) {
+    const cls = await this.requireManagedClassroom(classId, teacherId, userRole);
+    if (hasValidDatabaseUrl) {
+      await prisma.classroomEnrollment.deleteMany({ where: { classroomId: cls.id, studentId } });
+    } else {
+      fallbackStore.classroomEnrollments = fallbackStore.classroomEnrollments.filter(
+        (e) => !(e.classroomId === cls.id && e.studentId === studentId)
+      );
+    }
+  }
+
   static async getAuthorizedClassrooms(teacherId: string, userRole: string): Promise<ClassSummaryDTO[]> {
     const isStaff = userRole === "TEACHER" || userRole === "ADMIN";
     if (!isStaff) throw new Error("Unauthorized");

@@ -34,6 +34,45 @@ export default function TeacherClassDetailPage({
   const [assignmentDesc, setAssignmentDesc] = useState("");
   const [submittingAssignment, setSubmittingAssignment] = useState(false);
 
+  // Enroll / remove students
+  const [enrollEmail, setEnrollEmail] = useState("");
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollMessage, setEnrollMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enrollEmail.trim() || enrolling) return;
+    setEnrolling(true);
+    setEnrollMessage(null);
+    try {
+      const res = await authFetch(`/api/teacher/classes/${classId}/students`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: enrollEmail.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not enroll the student");
+      setEnrollMessage({ ok: true, text: `${json.data.name} was added to the class.` });
+      setEnrollEmail("");
+      await fetchClassDetail();
+    } catch (err: unknown) {
+      setEnrollMessage({ ok: false, text: err instanceof Error ? err.message : "Could not enroll the student" });
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
+  const handleRemoveStudent = async (studentId: string, name: string) => {
+    if (!window.confirm(`Remove ${name} from this class?`)) return;
+    setEnrollMessage(null);
+    const res = await authFetch(`/api/teacher/classes/${classId}/students/${studentId}`, { method: "DELETE" });
+    if (res.ok) {
+      await fetchClassDetail();
+    } else {
+      setEnrollMessage({ ok: false, text: "Could not remove the student." });
+    }
+  };
+
   const handleNav = (path: string) => {
     if (onNavigate) onNavigate(path);
     else window.location.pathname = path;
@@ -218,6 +257,44 @@ export default function TeacherClassDetailPage({
               <h2 className="text-base font-bold text-slate-900">
                 Enrolled Students ({classData.students?.length || 0})
               </h2>
+              <form onSubmit={handleEnroll} className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row gap-3 sm:items-end">
+                <div className="flex-1">
+                  <label htmlFor="enroll-email" className="text-xs font-bold text-slate-700 block mb-1">
+                    Add a student by email
+                  </label>
+                  <input
+                    id="enroll-email"
+                    type="email"
+                    value={enrollEmail}
+                    onChange={(e) => setEnrollEmail(e.target.value)}
+                    placeholder="student@example.com (the student must have registered first)"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm min-h-[44px]"
+                  />
+                </div>
+                <Button type="submit" variant="primary" disabled={!enrollEmail.trim() || enrolling} className="min-h-[44px]">
+                  {enrolling ? "Adding..." : "Add student"}
+                </Button>
+                {enrollMessage && (
+                  <p role="alert" className={`text-xs sm:basis-full ${enrollMessage.ok ? "text-emerald-700" : "text-red-700"}`}>
+                    {enrollMessage.text}
+                  </p>
+                )}
+              </form>
+              {(classData.students || []).length > 0 && (
+                <div className="flex flex-wrap gap-2" aria-label="Remove a student from this class">
+                  {(classData.students || []).map((st: any) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => handleRemoveStudent(st.id, st.name)}
+                      className="text-xs px-2.5 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 hover:border-red-300 hover:text-red-700 min-h-[32px]"
+                      title={`Remove ${st.name} from this class`}
+                    >
+                      {st.name} <span aria-hidden="true">&times;</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <StudentTable
                 students={classData.students || []}
                 total={classData.students?.length || 0}

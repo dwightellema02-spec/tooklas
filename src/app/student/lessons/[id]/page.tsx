@@ -22,6 +22,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { ContentBlockRenderer, LessonContentBlockData } from "@/components/lesson/ContentBlockRenderer";
+import type { CheckpointResult } from "@/components/lesson/blocks/CheckpointBlock";
 import {
   LearningStageStepper,
   LearningStageDef,
@@ -195,37 +196,35 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
     }
   };
 
-  // Checkpoint attempt handler
+  // Checkpoint attempt handler: the server grades the answer and returns the result.
   const handleCheckpointAttempt = async (
     blockId: string,
-    answer: string,
-    correct: boolean,
-    feedback: string
-  ) => {
-    setAttemptsMap((prev) => ({
-      ...prev,
-      [blockId]: { answer, isCorrect: correct, feedback },
-    }));
-
-    const updated = completedBlockIds.includes(blockId)
-      ? completedBlockIds
-      : [...completedBlockIds, blockId];
-    setCompletedBlockIds(updated);
-
+    answer: string
+  ): Promise<CheckpointResult | null> => {
     try {
-      await authFetch(`/api/student/lessons/${lessonId}/checkpoint`, {
+      const res = await authFetch(`/api/student/lessons/${lessonId}/checkpoint`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blockId,
-          answer,
-          isCorrect: correct,
-          feedback,
-        }),
+        body: JSON.stringify({ blockId, answer }),
       });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const result: CheckpointResult | undefined = data.result;
+      if (!result) return null;
+
+      setAttemptsMap((prev) => ({
+        ...prev,
+        [blockId]: { answer, isCorrect: result.isCorrect, feedback: result.feedback },
+      }));
+      const updated = completedBlockIds.includes(blockId)
+        ? completedBlockIds
+        : [...completedBlockIds, blockId];
+      setCompletedBlockIds(updated);
       syncSession(activeSectionIndex, updated);
+      return result;
     } catch (e) {
       console.warn("Checkpoint submit error:", e);
+      return null;
     }
   };
 

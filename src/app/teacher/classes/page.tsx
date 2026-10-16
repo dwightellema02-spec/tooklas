@@ -14,6 +14,31 @@ export default function TeacherClassesPage({ onNavigate }: TeacherClassesPagePro
   const [classes, setClasses] = useState<ClassSummaryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newClassName, setNewClassName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClassName.trim() || creating) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const res = await authFetch("/api/teacher/classes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newClassName.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not create the class");
+      setNewClassName("");
+      await fetchClasses();
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : "Could not create the class");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const handleNav = (path: string) => {
     if (onNavigate) onNavigate(path);
@@ -53,6 +78,31 @@ export default function TeacherClassesPage({ onNavigate }: TeacherClassesPagePro
           </p>
         </div>
 
+        <form onSubmit={handleCreateClass} className="mb-6 bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row gap-3 sm:items-end">
+          <div className="flex-1">
+            <label htmlFor="new-class-name" className="text-xs font-bold text-slate-700 block mb-1">
+              Create a new class
+            </label>
+            <input
+              id="new-class-name"
+              type="text"
+              value={newClassName}
+              onChange={(e) => setNewClassName(e.target.value)}
+              maxLength={100}
+              placeholder="Example: Grade 7 - Section Rizal"
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm min-h-[44px]"
+            />
+          </div>
+          <Button type="submit" variant="primary" disabled={!newClassName.trim() || creating} className="min-h-[44px]">
+            {creating ? "Creating..." : "Create class"}
+          </Button>
+          {createError && (
+            <p role="alert" className="text-xs text-red-700 sm:basis-full">
+              {createError}
+            </p>
+          )}
+        </form>
+
         {loading && (
           <div className="py-24 text-center">
             <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto mb-2" />
@@ -71,7 +121,7 @@ export default function TeacherClassesPage({ onNavigate }: TeacherClassesPagePro
             <GraduationCap className="w-10 h-10 text-slate-400 mx-auto mb-3" />
             <h3 className="text-sm font-bold text-slate-900">No classes assigned</h3>
             <p className="text-xs text-slate-500 mt-1">
-              No classes are currently assigned to your account.
+              You have no classes yet. Create one above, then add students to it by email.
             </p>
           </div>
         )}

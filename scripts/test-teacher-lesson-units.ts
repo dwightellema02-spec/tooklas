@@ -59,8 +59,8 @@ async function testTeacherLessonUnits() {
 
   const terms = curRes.data.data[0]?.grades?.[0]?.terms || [];
   console.log(`-> Loaded ${terms.length} terms for Grade 7`);
-  if (terms.length < 4) {
-    throw new Error(`Expected at least 4 terms, found ${terms.length}`);
+  if (terms.length < 3) {
+    throw new Error(`Expected at least 3 terms (the three-term Budget of Work), found ${terms.length}`);
   }
 
   terms.forEach((t: any) => {

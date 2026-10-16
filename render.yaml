@@ -3,6 +3,8 @@ services:
     name: tuklas-ai
     runtime: docker
     healthCheckPath: /api/health
+    # Applies pending database migrations before each new version starts.
+    preDeployCommand: npx prisma migrate deploy
     envVars:
       - key: NODE_ENV
         value: production

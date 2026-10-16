@@ -2348,8 +2348,12 @@ export const dbService = {
     let publishedLessons: any[] = [];
     if (hasValidDatabaseUrl) {
       try {
+        const student = await prisma.user.findUnique({ where: { id: userId }, select: { gradeLevel: true } });
         const dbLessons = await prisma.lesson.findMany({
-          where: { status: "PUBLISHED" },
+          where: {
+            status: "PUBLISHED",
+            unit: { term: { grade: { level: student?.gradeLevel ?? 7, subject: { code: "MATH" } } } },
+          },
           include: {
             unit: {
               include: {
@@ -2521,12 +2525,6 @@ export const dbService = {
       };
     });
 
-    // Calculate Unit Progress
-    const totalUnitLessons = pathNodes.length;
-    const completedUnitLessons = pathNodes.filter((n) => n.state === "COMPLETED").length;
-    const unitPercentage =
-      totalUnitLessons > 0 ? Math.round((completedUnitLessons / totalUnitLessons) * 100) : 0;
-
     // Identify Continue Learning & Recommended Next
     // Continue Learning: Most recent in-progress lesson, or first available lesson
     const inProgressLesson = pathNodes.find((n) => n.state === "IN_PROGRESS");
@@ -2537,7 +2535,20 @@ export const dbService = {
     // Next Recommended: First available or in-progress
     const nextRecommended = inProgressLesson || firstAvailableLesson || null;
 
-    const firstLessonUnit = publishedLessons[0]?.unit;
+    // Unit progress covers the unit the student is working in; term progress covers the whole path.
+    const focusUnitId = continueLearning?.unitId;
+    const unitNodes = focusUnitId ? pathNodes.filter((n) => n.unitId === focusUnitId) : pathNodes;
+    const totalUnitLessons = unitNodes.length;
+    const completedUnitLessons = unitNodes.filter((n) => n.state === "COMPLETED").length;
+    const unitPercentage =
+      totalUnitLessons > 0 ? Math.round((completedUnitLessons / totalUnitLessons) * 100) : 0;
+    const totalPathLessons = pathNodes.length;
+    const completedPathLessons = pathNodes.filter((n) => n.state === "COMPLETED").length;
+    const pathPercentage =
+      totalPathLessons > 0 ? Math.round((completedPathLessons / totalPathLessons) * 100) : 0;
+
+    const focusLesson = publishedLessons.find((l) => (l.unitId || l.unit?.id) === focusUnitId) || publishedLessons[0];
+    const firstLessonUnit = focusLesson?.unit;
     const curriculumSubject = firstLessonUnit?.term?.grade?.subject?.name || fallbackStore.curriculum.subject.name;
     const curriculumGrade = firstLessonUnit?.term?.grade?.name || fallbackStore.curriculum.grade.name;
     const curriculumTerm = firstLessonUnit?.term?.name || fallbackStore.curriculum.term.name;
@@ -2566,9 +2577,9 @@ export const dbService = {
         term: curriculumTerm,
         unit: curriculumUnit,
         termProgress: {
-          totalLessons: totalUnitLessons,
-          completedLessons: completedUnitLessons,
-          progressPercentage: unitPercentage,
+          totalLessons: totalPathLessons,
+          completedLessons: completedPathLessons,
+          progressPercentage: pathPercentage,
         },
       },
       learningPath: pathNodes,
@@ -3230,6 +3241,52 @@ export const dbService = {
     }
 
     return fallbackStore.users.find((u) => u.email.toLowerCase() === cleanEmail) || null;
+  },
+
+  /**
+   * Admin: list accounts (no password hashes), newest first
+   */
+  async listUsers(limit = 200) {
+    if (getHasValidDatabaseUrl()) {
+      try {
+        return await prisma.user.findMany({
+          select: { id: true, email: true, name: true, role: true, gradeLevel: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: Math.min(Math.max(limit, 1), 500),
+        });
+      } catch (err: unknown) {
+        console.error("Database error during listUsers:", err);
+        throw new DatabaseUnavailableError();
+      }
+    }
+    if (isProduction()) throw new DatabaseUnavailableError();
+    return fallbackStore.users
+      .map(({ id, email, name, role, gradeLevel, createdAt }) => ({ id, email, name, role, gradeLevel, createdAt }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  },
+
+  /**
+   * Admin: change an account's role
+   */
+  async updateUserRole(userId: string, role: UserRole) {
+    if (getHasValidDatabaseUrl()) {
+      try {
+        return await prisma.user.update({
+          where: { id: userId },
+          data: { role },
+          select: { id: true, email: true, name: true, role: true },
+        });
+      } catch (err: unknown) {
+        console.error("Database error during updateUserRole:", err);
+        throw new DatabaseUnavailableError();
+      }
+    }
+    if (isProduction()) throw new DatabaseUnavailableError();
+    const user = fallbackStore.users.find((u) => u.id === userId);
+    if (!user) throw new Error("User not found");
+    user.role = role;
+    user.updatedAt = new Date();
+    return { id: user.id, email: user.email, name: user.name, role: user.role };
   },
 
   /**

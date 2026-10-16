@@ -138,7 +138,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             {/* Top Pill / Status Tag */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-xs font-medium mb-6">
               <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-              <span>Phase 1: Project Foundation</span>
+              <span>Pilot Release</span>
               <span className="text-slate-400">•</span>
               <span className="text-teal-700 font-semibold">Grade 7 MATATAG Math</span>
             </div>
@@ -178,7 +178,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <div className="mt-10 p-3.5 sm:p-4 rounded-xl bg-slate-100/80 border border-slate-200/80 text-xs text-slate-600 max-w-xl mx-auto flex items-center justify-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
               <span>
-                <strong>Under Active Development:</strong> AI-powered learning features are coming in future development phases.
+                <strong>Pilot release:</strong> new lessons are added week by week, and teachers review all content before students see it. The AI tutor is a learning helper and does not replace your teacher.
               </span>
             </div>
           </div>

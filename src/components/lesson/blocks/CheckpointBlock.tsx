@@ -3,12 +3,20 @@ import { HelpCircle, CheckCircle2, AlertCircle, RefreshCw, Sparkles } from "luci
 import { MathText } from "@/components/ui/MathText";
 import { Button } from "@/components/ui/Button";
 
+/** Result of an answer graded by the server. */
+export interface CheckpointResult {
+  isCorrect: boolean;
+  feedback: string;
+  correctAnswer: string;
+}
+
 export interface CheckpointBlockProps {
   blockId: string;
   title?: string;
   content: string; // Question prompt or description
   metadata?: string; // JSON with options[], correctAnswer, explanation
-  onAttempt?: (blockId: string, answer: string, isCorrect: boolean, feedback: string) => void;
+  /** Submits the answer to the server, which grades it. Without it (teacher preview) the answer is graded locally. */
+  onAttempt?: (blockId: string, answer: string) => Promise<CheckpointResult | null>;
   previousAttempt?: { answer: string; isCorrect: boolean; feedback?: string };
   onAskAITutor?: (ctx: { questionPrompt: string; studentAnswer?: string; explanation?: string }) => void;
   readOnly?: boolean;
@@ -37,26 +45,45 @@ export function CheckpointBlock({
     } catch {}
   }
 
-  // Fallback defaults for the MATATAG Integers Checkpoint
-  const question = parsed.question || content || "Which number is greater?";
-  const options = parsed.options || ["-5", "-2", "-8"];
-  const correctAnswer = parsed.correctAnswer || "-2";
-  const explanation =
-    parsed.explanation ||
-    "On a horizontal number line, numbers farther to the right are greater. -2 is to the right of -5 and -8, meaning -2 > -5 and -2 > -8.";
+  const question = parsed.question || content;
+  const options = parsed.options || [];
 
   const [selectedOption, setSelectedOption] = useState<string>(previousAttempt?.answer || "");
   const [submitted, setSubmitted] = useState<boolean>(!!previousAttempt);
   const [isCorrect, setIsCorrect] = useState<boolean>(previousAttempt?.isCorrect ?? false);
+  // The answer key and explanation come from the server after an attempt (or from the metadata in teacher preview).
+  const [explanation, setExplanation] = useState<string>(previousAttempt?.feedback || "");
+  const [revealedAnswer, setRevealedAnswer] = useState<string>(
+    previousAttempt?.isCorrect ? previousAttempt.answer : ""
+  );
+  const [checking, setChecking] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
 
-  const handleSubmit = () => {
-    if (!selectedOption || readOnly) return;
-    const correct = selectedOption.trim() === correctAnswer.trim();
-    setIsCorrect(correct);
-    setSubmitted(true);
+  const handleSubmit = async () => {
+    if (!selectedOption || readOnly || checking) return;
+    setError("");
 
     if (onAttempt) {
-      onAttempt(blockId, selectedOption, correct, explanation);
+      setChecking(true);
+      const result = await onAttempt(blockId, selectedOption);
+      setChecking(false);
+      if (!result) {
+        setError("We could not check your answer. Please try again.");
+        return;
+      }
+      setIsCorrect(result.isCorrect);
+      setExplanation(result.feedback);
+      setRevealedAnswer(result.correctAnswer);
+      setSubmitted(true);
+      return;
+    }
+
+    if (parsed.correctAnswer) {
+      // Teacher preview: staff receive the answer key, so the answer is checked locally.
+      setIsCorrect(selectedOption.trim() === parsed.correctAnswer.trim());
+      setExplanation(parsed.explanation || "");
+      setRevealedAnswer(parsed.correctAnswer);
+      setSubmitted(true);
     }
   };
 
@@ -100,7 +127,7 @@ export function CheckpointBlock({
         <div className="space-y-2.5">
           {options.map((opt, idx) => {
             const isSelected = selectedOption === opt;
-            const isTargetCorrect = opt.trim() === correctAnswer.trim();
+            const isTargetCorrect = revealedAnswer !== "" && opt.trim() === revealedAnswer.trim();
 
             let optionStyle =
               "border-slate-200 bg-slate-50 hover:bg-slate-100/80 text-slate-800";
@@ -136,16 +163,22 @@ export function CheckpointBlock({
           })}
         </div>
 
+        {error && (
+          <p role="alert" className="text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
         {/* Action Button */}
         {!submitted ? (
           <div className="pt-2 flex items-center justify-between">
             <Button
               variant="primary"
-              disabled={!selectedOption || readOnly}
+              disabled={!selectedOption || readOnly || checking}
               onClick={handleSubmit}
               className="gap-2 min-h-[44px]"
             >
-              <span>Submit Answer</span>
+              <span>{checking ? "Checking..." : "Submit Answer"}</span>
             </Button>
 
             {onAskAITutor && (
@@ -178,9 +211,11 @@ export function CheckpointBlock({
                 <span className="font-bold block">
                   {isCorrect ? "Correct! Excellent reasoning." : "Not quite, but good effort!"}
                 </span>
-                <div className="text-xs sm:text-sm text-slate-700">
-                  <MathText content={explanation} />
-                </div>
+                {explanation && (
+                  <div className="text-xs sm:text-sm text-slate-700">
+                    <MathText content={explanation} />
+                  </div>
+                )}
               </div>
             </div>
 

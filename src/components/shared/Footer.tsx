@@ -70,8 +70,7 @@ export function Footer({ onNavigate }: FooterProps) {
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
-              <strong>Phase 1 Foundation:</strong> Core layout and structural scaffolding.
-              AI tutoring, database persistence, and teacher analytics will activate in upcoming development phases.
+              <strong>Pilot release:</strong> Grade 7 Mathematics (MATATAG). Lessons are reviewed by teachers before they are published.
             </span>
           </div>
           <div className="flex items-center sm:justify-end gap-2 text-slate-400">

@@ -19,6 +19,9 @@ export async function seedDatabase() {
   console.log("🌱 Starting Tuklas AI Phase 2 database seed...");
 
   // 1. Create Default Role Users (Passwords securely hashed with bcrypt)
+  if (process.env.NODE_ENV === "production" && !process.env.DEMO_SEED_PASSWORD) {
+    throw new Error("DEMO_SEED_PASSWORD must be set when seeding in production. The built-in development password is public.");
+  }
   const rawSeedPassword = process.env.DEMO_SEED_PASSWORD || "Tuklas2026!";
   const defaultPassword = await bcrypt.hash(rawSeedPassword, 10);
 

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import type { CheckpointResult } from "./CheckpointBlock";
 import { HelpCircle, CheckCircle2, AlertCircle, Lightbulb, RefreshCw, Sparkles } from "lucide-react";
 import { MathText } from "@/components/ui/MathText";
 import { Button } from "@/components/ui/Button";
@@ -8,7 +9,8 @@ export interface QuestionBlockProps {
   title?: string;
   content: string; // Question prompt
   metadata?: string; // JSON with question, options[], correctAnswer, explanation, hint
-  onAttempt?: (blockId: string, answer: string, isCorrect: boolean, feedback: string) => void;
+  /** Submits the answer to the server, which grades it. Without it (teacher preview) the answer is graded locally. */
+  onAttempt?: (blockId: string, answer: string) => Promise<CheckpointResult | null>;
   previousAttempt?: { answer: string; isCorrect: boolean; feedback?: string };
   onAskAITutor?: (ctx: { questionPrompt: string; studentAnswer?: string; explanation?: string }) => void;
   readOnly?: boolean;
@@ -38,27 +40,47 @@ export function QuestionBlock({
     } catch {}
   }
 
-  const question = parsed.question || content || "Evaluate the given expression.";
-  const options = parsed.options || ["Positive", "Negative", "Zero"];
-  const correctAnswer = parsed.correctAnswer || "Negative";
-  const explanation =
-    parsed.explanation ||
-    "Since the value lies to the left of 0 on the number line, it is a negative integer.";
-  const hint = parsed.hint || "Recall that numbers to the left of zero have minus signs.";
+  const question = parsed.question || content;
+  const options = parsed.options || [];
+  const hint = parsed.hint || "";
 
   const [selectedAnswer, setSelectedAnswer] = useState<string>(previousAttempt?.answer || "");
   const [submitted, setSubmitted] = useState<boolean>(!!previousAttempt);
   const [isCorrect, setIsCorrect] = useState<boolean>(previousAttempt?.isCorrect ?? false);
   const [showHint, setShowHint] = useState<boolean>(false);
+  // The answer key and explanation come from the server after an attempt (or from the metadata in teacher preview).
+  const [explanation, setExplanation] = useState<string>(previousAttempt?.feedback || "");
+  const [revealedAnswer, setRevealedAnswer] = useState<string>(
+    previousAttempt?.isCorrect ? previousAttempt.answer : ""
+  );
+  const [checking, setChecking] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
 
-  const handleSubmit = () => {
-    if (!selectedAnswer || readOnly) return;
-    const correct = selectedAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
-    setIsCorrect(correct);
-    setSubmitted(true);
+  const handleSubmit = async () => {
+    if (!selectedAnswer || readOnly || checking) return;
+    setError("");
 
     if (onAttempt) {
-      onAttempt(blockId, selectedAnswer, correct, explanation);
+      setChecking(true);
+      const result = await onAttempt(blockId, selectedAnswer);
+      setChecking(false);
+      if (!result) {
+        setError("We could not check your answer. Please try again.");
+        return;
+      }
+      setIsCorrect(result.isCorrect);
+      setExplanation(result.feedback);
+      setRevealedAnswer(result.correctAnswer);
+      setSubmitted(true);
+      return;
+    }
+
+    if (parsed.correctAnswer) {
+      // Teacher preview: staff receive the answer key, so the answer is checked locally.
+      setIsCorrect(selectedAnswer.trim().toLowerCase() === parsed.correctAnswer.trim().toLowerCase());
+      setExplanation(parsed.explanation || "");
+      setRevealedAnswer(parsed.correctAnswer);
+      setSubmitted(true);
     }
   };
 
@@ -120,7 +142,7 @@ export function QuestionBlock({
         <div className="space-y-2.5">
           {options.map((opt, idx) => {
             const isSelected = selectedAnswer === opt;
-            const isTarget = opt.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
+            const isTarget = revealedAnswer !== "" && opt.trim().toLowerCase() === revealedAnswer.trim().toLowerCase();
 
             let style = "border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800";
             if (submitted) {
@@ -155,11 +177,17 @@ export function QuestionBlock({
           })}
         </div>
 
+        {error && (
+          <p role="alert" className="text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
         {!submitted ? (
           <div className="pt-2 flex items-center justify-between">
             <Button
               variant="primary"
-              disabled={!selectedAnswer || readOnly}
+              disabled={!selectedAnswer || readOnly || checking}
               onClick={handleSubmit}
               className="gap-2 min-h-[44px]"
             >
@@ -195,9 +223,11 @@ export function QuestionBlock({
                 <span className="font-bold block">
                   {isCorrect ? "Correct! Well done." : "That's not correct."}
                 </span>
-                <div className="text-xs sm:text-sm text-slate-700">
-                  <MathText content={explanation} />
-                </div>
+                {explanation && (
+                  <div className="text-xs sm:text-sm text-slate-700">
+                    <MathText content={explanation} />
+                  </div>
+                )}
               </div>
             </div>
 
