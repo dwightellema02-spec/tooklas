@@ -2468,8 +2468,16 @@ export const dbService = {
         }
       }
 
-      // Also ensure sequence order: If it's the foundational introductory lesson, it is never locked
-      if ((lesson.id === "lsn_01" || idx === 0) && !lesson.prerequisiteLessonId) {
+      // Strict Budget-of-Work order: a lesson opens only after the lesson before it in the path
+      // (term, then unit, then lesson order) has been completed. Unpublished lessons are not in the path.
+      const previousLesson = idx > 0 ? publishedLessons[idx - 1] : null;
+      if (previousLesson && !completedLessonIds.has(previousLesson.id)) {
+        isLocked = true;
+        lockReasons.push(`Requires completion of "${previousLesson.title}"`);
+      }
+
+      // The very first lesson in the path is never locked
+      if (idx === 0 && !lesson.prerequisiteLessonId) {
         // First introductory lesson in curriculum is always unlocked for newly registered students
         isLocked = false;
         lockReasons.length = 0;

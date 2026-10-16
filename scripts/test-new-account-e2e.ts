@@ -113,13 +113,19 @@ async function runAudit() {
 
     // STEP 6: CURRICULUM & LESSON 1 ACCESS (NO MORE CIRCULAR DEADLOCK)
     console.log("\n--- 6. CURRICULUM & LESSON 1 ACCESS ---");
-    const l1AccessRes = await fetch(`${BASE_URL}/api/student/lessons/lsn_01/access`, {
+    // Lessons open in Budget-of-Work order, so the first lesson in the path is whichever is published first.
+    const firstPathRes = await fetch(`${BASE_URL}/api/student/learning-path`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+    const pathJson = await firstPathRes.json();
+    const firstLessonId: string = pathJson.data?.learningPath?.[0]?.lessonId || "lsn_01";
+    const l1AccessRes = await fetch(`${BASE_URL}/api/student/lessons/${firstLessonId}/access`, {
       headers: { Authorization: `Bearer ${sessionToken}` },
     });
     const l1Access = await l1AccessRes.json();
-    assert(l1AccessRes.status === 200, "GET /api/student/lessons/lsn_01/access returns 200 OK");
-    assert(l1Access.data?.allowed === true, "Lesson 1 access is ALLOWED for brand new account");
-    assert(l1Access.data?.state === "AVAILABLE", "Lesson 1 state is AVAILABLE");
+    assert(l1AccessRes.status === 200, "GET access of the first lesson in the path returns 200 OK");
+    assert(l1Access.data?.allowed === true, "The first lesson in the path is ALLOWED for a brand new account");
+    assert(l1Access.data?.state === "AVAILABLE", "The first lesson in the path is AVAILABLE");
 
     // Retrieve Lesson 1 content
     const l1Res = await fetch(`${BASE_URL}/api/lessons/lsn_01`, {

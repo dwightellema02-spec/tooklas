@@ -26,6 +26,10 @@ const pdfDir = pdfDirArg > -1 ? process.argv[pdfDirArg + 1] : undefined;
 
 class DryRunRollback extends Error {}
 
+// Lessons from an earlier version of this script (one lesson per week). They are replaced by the
+// per-sub-topic lessons, and only removed if still a draft that nobody has moved forward.
+const SUPERSEDED_LESSON_IDS = ["lsn_g7q1_w1", "lsn_g7q1_w2", "lsn_g7q1_w3", "lsn_g7q1_w4", "lsn_g7q1_w5", "lsn_g7q1_w6"];
+
 const log = (msg: string) => console.log(msg);
 
 async function main() {
@@ -213,7 +217,19 @@ async function main() {
           }
         }
 
-        // ---- 6. Draft lessons, content blocks and teacher-reference documents
+        // ---- 6a. Remove superseded draft lessons from an earlier run
+        for (const oldId of SUPERSEDED_LESSON_IDS) {
+          const old = await tx.lesson.findUnique({ where: { id: oldId } });
+          if (!old) continue;
+          if (old.status === "DRAFT") {
+            await tx.lesson.delete({ where: { id: oldId } });
+            log(`  - superseded draft lesson removed: ${oldId}`);
+          } else {
+            log(`  ! superseded lesson ${oldId} is ${old.status}; left in place, please review it by hand`);
+          }
+        }
+
+        // ---- 6. Draft lessons, content blocks, supporting videos and teacher-reference documents
         const author = await tx.user.findUnique({ where: { id: "usr_teacher_01" } });
         for (const l of Q1_DRAFT_LESSONS) {
           const unitId = unitIdByKey.get(key(l.termNumber, l.unitTitle))!;
@@ -270,6 +286,28 @@ async function main() {
             log(`  ~ draft lesson refreshed: ${l.id} with ${l.blocks.length} blocks`);
           } else {
             log(`  = lesson exists, left untouched: ${l.id}`);
+          }
+
+          for (const v of l.videos) {
+            const have = await tx.lessonResource.findFirst({ where: { lessonId: l.id, youtubeId: v.youtubeId } });
+            if (have) continue;
+            const count = await tx.lessonResource.count({ where: { lessonId: l.id } });
+            await tx.lessonResource.create({
+              data: {
+                lessonId: l.id,
+                type: "YOUTUBE",
+                title: v.title,
+                url: `https://www.youtube.com/watch?v=${v.youtubeId}`,
+                youtubeId: v.youtubeId,
+                provider: "YOUTUBE",
+                channelName: v.channel,
+                thumbnailUrl: `https://img.youtube.com/vi/${v.youtubeId}/hqdefault.jpg`,
+                status: "APPROVED",
+                addedBy: author?.id ?? null,
+                sequenceOrder: count + 1,
+              },
+            });
+            log(`  + video attached to ${l.id}: ${v.youtubeId}`);
           }
 
           for (const d of l.documents) {

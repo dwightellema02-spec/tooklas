@@ -79,7 +79,8 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
   const [viewMode, setViewMode] = useState<"step" | "scroll">("step");
   const [isAITutorOpen, setIsAITutorOpen] = useState<boolean>(false);
   const [tutorContext, setTutorContext] = useState<any>(null);
-  const [showSupportingVideo, setShowSupportingVideo] = useState<boolean>(false);
+  // The video that is open (a lesson can have several supporting videos)
+  const [openVideoKey, setOpenVideoKey] = useState<string | null>(null);
 
   const handleNav = (path: string) => {
     if (onNavigate) onNavigate(path);
@@ -324,15 +325,15 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
   }).filter((s) => s.blockCount > 0);
 
   // Attached Mathisipan YouTube video resource
-  let attachedVideo = lesson?.resources?.find((r: any) => r.type === "YOUTUBE");
-  if (!attachedVideo && lesson?.videoUrl) {
+  const attachedVideos: any[] = (lesson?.resources || []).filter((r: any) => r.type === "YOUTUBE");
+  if (attachedVideos.length === 0 && lesson?.videoUrl) {
     const parsed = parseYouTubeUrl(lesson.videoUrl);
     if (parsed.isValid && parsed.videoId) {
-      attachedVideo = {
+      attachedVideos.push({
         youtubeId: parsed.videoId,
         title: `${lesson.title} - Mathisipan Concept Video`,
         url: lesson.videoUrl,
-      };
+      });
     }
   }
 
@@ -570,55 +571,57 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
       <div className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col md:flex-row gap-8">
         <main className="flex-1 min-w-0 space-y-6">
           {/* Supportive Mathisipan Video Card (Contextually Placed, Non-Blocking) */}
-          {attachedVideo && (
+          {attachedVideos.length > 0 && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
-                    <Play className="w-4 h-4 fill-red-600" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-red-700 block">
-                      Supportive Video Tutorial • Mathisipan
-                    </span>
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-1">
-                      {attachedVideo.title}
-                    </h3>
-                  </div>
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setShowSupportingVideo(!showSupportingVideo);
-                    if (!showSupportingVideo) {
-                      authFetch(`/api/student/lessons/${lessonId}/video-event`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          videoId: attachedVideo.youtubeId || attachedVideo.url,
-                        }),
-                      }).catch(console.warn);
-                    }
-                  }}
-                  className="text-xs self-start sm:self-auto min-h-[38px] gap-1.5"
-                >
-                  <Play className="w-3.5 h-3.5" />
-                  <span>{showSupportingVideo ? "Hide Video Tutorial" : "Watch Video Tutorial"}</span>
-                </Button>
-              </div>
-
-              {showSupportingVideo && (
-                <div className="pt-2 animate-in fade-in duration-200">
-                  <YouTubeVideo
-                    videoId={attachedVideo.youtubeId}
-                    url={attachedVideo.url}
-                    title={attachedVideo.title}
-                    description={attachedVideo.notes}
-                  />
-                </div>
-              )}
+              <span className="text-[10px] font-bold uppercase tracking-wider text-red-700 block">
+                Supportive Video Tutorial{attachedVideos.length > 1 ? "s" : ""} • Mathisipan
+              </span>
+              <ul className="space-y-3">
+                {attachedVideos.map((video: any) => {
+                  const key = video.youtubeId || video.url;
+                  const isOpen = openVideoKey === key;
+                  return (
+                    <li key={key} className="space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
+                            <Play className="w-4 h-4 fill-red-600" />
+                          </div>
+                          <h3 className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-2">{video.title}</h3>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setOpenVideoKey(isOpen ? null : key);
+                            if (!isOpen) {
+                              authFetch(`/api/student/lessons/${lessonId}/video-event`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ videoId: key }),
+                              }).catch(console.warn);
+                            }
+                          }}
+                          className="text-xs self-start sm:self-auto min-h-[38px] gap-1.5 shrink-0"
+                        >
+                          <Play className="w-3.5 h-3.5" />
+                          <span>{isOpen ? "Hide Video" : "Watch Video"}</span>
+                        </Button>
+                      </div>
+                      {isOpen && (
+                        <div className="pt-1 animate-in fade-in duration-200">
+                          <YouTubeVideo
+                            videoId={video.youtubeId}
+                            url={video.url}
+                            title={video.title}
+                            description={video.notes}
+                          />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
 

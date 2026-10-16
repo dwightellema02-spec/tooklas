@@ -45,7 +45,7 @@ Set these in the host's dashboard. Never commit real values.
    ```bash
    npx tsx scripts/seed-bow-restructure.ts --pdf-dir "<folder with the DepEd PDFs>"
    ```
-   On a new database it also creates Mathematics, Grade 7 and Terms 1 to 3. The six lessons arrive as DRAFT. A teacher reviews them, sends them to review, an administrator
+   On a new database it also creates Mathematics, Grade 7 and Terms 1 to 3. The 18 Term 1 lessons (Weeks 1 to 6, one lesson per sub-topic) arrive as DRAFT, with their supporting videos and teacher-reference PDFs. A teacher reviews them, sends them to review, an administrator
    approves, and then they are published. Students never see drafts.
 5. **Rotate the Gemini key** if it has ever been in a shared file or chat, and set a quota alert.
 6. **Review the privacy side.** The site stores student names, emails and learning records. Add the

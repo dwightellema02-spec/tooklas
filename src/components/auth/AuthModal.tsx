@@ -118,7 +118,7 @@ export function AuthModal({
               {isRegister ? "Create Tuklas AI Account" : "Sign In to Tuklas AI"}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Secure role-based authentication (Phase 2 Foundation)
+              {isRegister ? "New accounts are student accounts." : "Sign in to continue your lessons."}
             </p>
           </div>
           <button

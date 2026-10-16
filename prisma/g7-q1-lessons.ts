@@ -1,11 +1,13 @@
 /**
  * Grade 7 Mathematics, Term 1, Weeks 1-6: original draft lessons written from the learning
- * competencies of the DepEd MATATAG Three-Term Budget of Work (April 2026).
+ * competencies of the DepEd MATATAG Three-Term Budget of Work (April 2026) and the sub-topics of the
+ * weekly Lesson Exemplars.
  *
- * These are NOT copies of the DepEd Lesson Exemplars, which are restricted to teacher use.
- * Each weekly lesson is organised in "Day" sections that follow the number of class days the
- * exemplars plan for the week. A student can stop at the end of a day and continue later; the
- * lesson viewer saves progress. All lessons are seeded as DRAFT for teacher review.
+ * A week is several class days, so a week is NOT one lesson: each lesson covers one sub-topic of the
+ * week and stays inside what the Budget of Work and the exemplar list for it.
+ *
+ * These are NOT copies of the DepEd Lesson Exemplars, which are restricted to teacher use. All lessons
+ * are seeded as DRAFT for teacher review.
  */
 
 export interface DraftBlock {
@@ -13,6 +15,12 @@ export interface DraftBlock {
   title: string;
   content: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface DraftVideo {
+  youtubeId: string;
+  title: string;
+  channel: string;
 }
 
 export interface DraftLesson {
@@ -26,6 +34,8 @@ export interface DraftLesson {
   estimatedMinutes: number;
   /** File names of the DepEd PDFs attached to this lesson as teacher documents. */
   documents: Array<{ fileName: string; title: string }>;
+  /** Supporting videos shown to students on the lesson page. */
+  videos: DraftVideo[];
   blocks: DraftBlock[];
 }
 
@@ -64,19 +74,22 @@ const example = (title: string, problem: string, steps: string[], answer: string
   metadata: { problem, steps, answer },
 });
 
-/** Flattens the days into numbered blocks, with a start-of-day block and an end-of-day break. */
+/** Flattens the days into numbered blocks. A lesson with more than one day gets day markers and a break. */
 function buildLesson(spec: LessonSpec): DraftLesson {
   const { days, ...rest } = spec;
   const blocks: DraftBlock[] = [];
+  const multiDay = days.length > 1;
   days.forEach((day, d) => {
-    blocks.push(
-      text(
-        `Day ${d + 1}: ${day.focus}`,
-        `**Day ${d + 1} of ${days.length}.** Today: ${day.focus.toLowerCase()}.\n\nPlan about ${MINUTES_PER_DAY} minutes. When you finish the checkpoints you can stop for today. Your progress is saved, so you can continue tomorrow.`
-      )
-    );
+    if (multiDay) {
+      blocks.push(
+        text(
+          `Day ${d + 1}: ${day.focus}`,
+          `**Day ${d + 1} of ${days.length}.** Today: ${day.focus.toLowerCase()}.\n\nPlan about ${MINUTES_PER_DAY} minutes. When you finish the checkpoints you can stop for today. Your progress is saved, so you can continue tomorrow.`
+        )
+      );
+    }
     blocks.push(...day.blocks);
-    if (d < days.length - 1) {
+    if (multiDay && d < days.length - 1) {
       blocks.push(
         text(
           `End of Day ${d + 1}`,
@@ -96,35 +109,49 @@ const BOW_DOC = {
   fileName: "G7-BOW-Mathematics-7-Three-Term-1 (1).pdf",
   title: "Grade 7 Mathematics Three-Term Budget of Work (Teacher Reference)",
 };
+const LE = (week: number, file: string) => ({
+  fileName: file,
+  title: `Lesson Exemplar Q1 Lesson ${week} (Teacher Reference)`,
+});
+const LE1 = LE(1, "Q1_LE_Mathematics-7_Lesson-1_Week-1.pdf");
+const LE2 = LE(2, "LE_MATH-7-Q1_W2.pdf");
+const LE3 = LE(3, "LE_MATH-7-Q1_W3.pdf");
+const LE4 = LE(4, "LE_MATH-7-Q1_W4.pdf");
+const LE5 = LE(5, "LE_MATH-7-Q1_W5.pdf");
+const LE6 = LE(6, "LE_MATH-7-Q1_W6.pdf");
+
+const ISIP = "Math Isip";
+const video = (youtubeId: string, title: string): DraftVideo => ({ youtubeId, title, channel: ISIP });
+
+const POLYGONS = "Polygons and Angle Relationships";
+const PERCENT = "Percentages and Rates";
 
 const SPECS: LessonSpec[] = [
-  // ================================================================ Week 1
+  // ================================================================ WEEK 1
   {
-    id: "lsn_g7q1_w1",
+    id: "lsn_g7q1_w1_l1",
     termNumber: 1,
-    unitTitle: "Polygons and Angle Relationships",
+    unitTitle: POLYGONS,
     sequenceOrder: 1,
-    title: "Polygons: Naming, Classifying, and Drawing",
-    description:
-      "Define polygons, tell regular from irregular polygons, and draw triangles, quadrilaterals and regular polygons with a ruler, protractor and compass.",
+    title: "Week 1 · Define a polygon and describe its properties",
+    description: "Tell polygons from non-polygons, name polygons by their sides, and name their parts.",
     learningObjectives: [
-      "Define a polygon and name polygons with 3 to 10 sides",
-      "Describe regular and irregular polygons using the measures of their sides and angles",
-      "Draw regular polygons with 5, 6, 8 or 10 sides",
-      "Draw triangles and quadrilaterals with given angle measures",
+      "Define a polygon",
+      "Name polygons with 3 to 10 sides",
+      "Name a polygon, its sides and its interior angles using its vertices",
     ],
-    documents: [BOW_DOC, { fileName: "Q1_LE_Mathematics-7_Lesson-1_Week-1.pdf", title: "Lesson Exemplar Q1 Lesson 1 (Teacher Reference)" }],
+    documents: [BOW_DOC, LE1],
+    videos: [
+      video("ea30OYqlJS8", "Grade 7 MATH Term 1 Week 1: Definition & Properties of a Polygon | MATATAG - Quarter 1 (Tagalog)"),
+      video("dhOZ7Bg4QXc", "Grade 7 MATH Term 1 Week 1-2: Classification, Name & Parts of Polygon | MATATAG - Quarter 1 (Tagalog)"),
+    ],
     days: [
       {
-        focus: "What a polygon is, and naming polygons",
+        focus: "Polygons and their parts",
         blocks: [
           text(
             "What is a polygon?",
             "A **polygon** is a closed flat figure made only of straight line segments. The segments meet only at their endpoints, which are called **vertices**.\n\nA figure is **not** a polygon if it is open, has a curved side, or if its sides cross each other in the middle.\n\nExamples of polygons: a triangle, a stop sign, a kite. Not polygons: a circle (curved), a letter V (open)."
-          ),
-          text(
-            "Naming polygons",
-            "A polygon is named by its number of sides. A polygon always has the same number of sides, vertices and interior angles.\n\n| Sides | Name |\n|---|---|\n| 3 | Triangle |\n| 4 | Quadrilateral |\n| 5 | Pentagon |\n| 6 | Hexagon |\n| 7 | Heptagon |\n| 8 | Octagon |\n| 9 | Nonagon |\n| 10 | Decagon |\n\nWe also name a polygon using its vertices in order. A triangle with vertices A, B and C is triangle ABC. Its sides are AB, BC and AC."
           ),
           checkpoint(
             "Checkpoint: Is it a polygon?",
@@ -138,6 +165,14 @@ const SPECS: LessonSpec[] = [
             "A closed figure with 6 straight sides that meet only at their endpoints",
             "A polygon must be closed and made only of straight sides that meet at endpoints. Only the 6-sided closed figure satisfies all of these."
           ),
+          text(
+            "Naming a polygon and its parts",
+            "A polygon is named using its vertices, in order. A triangle with vertices A, B and C may be called triangle ABC, triangle BCA or triangle ACB.\n\n- Its **sides** are AB, BC and AC.\n- Its **interior angles** are ∠BAC, ∠ABC and ∠BCA.\n\nA polygon always has the same number of sides, vertices and interior angles."
+          ),
+          text(
+            "Naming polygons by their sides",
+            "Polygons are named by their number of sides. The prefix tells the number: *tri-* is three, *quad-* is four, and so on.\n\n| Sides | Name | Interior angles |\n|---|---|---|\n| 3 | Triangle | 3 |\n| 4 | Quadrilateral | 4 |\n| 5 | Pentagon | 5 |\n| 6 | Hexagon | 6 |\n| 7 | Heptagon | 7 |\n| 8 | Octagon | 8 |\n| 9 | Nonagon | 9 |\n| 10 | Decagon | 10 |"
+          ),
           checkpoint(
             "Checkpoint: Naming by sides",
             "A polygon has 8 sides. What is it called?",
@@ -145,14 +180,55 @@ const SPECS: LessonSpec[] = [
             "Octagon",
             "Octa- means eight. A hexagon has 6 sides, a heptagon 7 and a nonagon 9."
           ),
+          checkpoint(
+            "Checkpoint: Parts of a polygon",
+            "How many interior angles does a hexagon have?",
+            ["3", "5", "6", "8"],
+            "6",
+            "A polygon has as many interior angles as sides. A hexagon has 6 sides, so it has 6 interior angles."
+          ),
+          checkpoint(
+            "Checkpoint: Naming sides",
+            "Which are the sides of triangle ABC?",
+            ["AB, BC and AC", "A, B and C", "∠A, ∠B and ∠C", "AB only"],
+            "AB, BC and AC",
+            "The sides join the vertices: AB, BC and AC. The letters A, B and C are the vertices."
+          ),
+          summary(
+            "Lesson summary",
+            "- A polygon is a closed figure made of straight sides that meet only at endpoints.\n- A polygon is named using its vertices and by its number of sides.\n- The number of sides, vertices and interior angles of a polygon is the same."
+          ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w1_l2",
+    termNumber: 1,
+    unitTitle: POLYGONS,
+    sequenceOrder: 2,
+    title: "Week 1 · Regular and irregular polygons",
+    description: "Name, describe and compare regular and irregular polygons with 5, 6, 8 or 10 sides.",
+    learningObjectives: [
+      "Tell regular polygons from irregular polygons",
+      "Describe polygons with 5, 6, 8 or 10 sides using the measures of their sides and angles",
+    ],
+    documents: [LE1],
+    videos: [
+      video("YrxFavYSiks", "Grade 7 MATH Term 1 Week 1 to 2: Regular and Irregular Polygons | MATATAG - Quarter 1 (Tagalog)"),
+      video("jM084u-2e2k", "Grade 7 MATH Term 1 Week 1: Describing Regular & Irregular Polygons | MATATAG - Quarter 1 (Tagalog)"),
+    ],
+    days: [
       {
         focus: "Regular and irregular polygons",
         blocks: [
           text(
             "Regular and irregular polygons",
-            "- A polygon is **equilateral** if all its sides are equal.\n- A polygon is **equiangular** if all its angles are equal.\n- A **regular polygon** is both equilateral and equiangular.\n- An **irregular polygon** is not regular: its sides or its angles are not all equal.\n\nA regular triangle is called an **equilateral triangle**, and a regular quadrilateral is a **square**. For other regular polygons we add the word regular: regular pentagon, regular hexagon, and so on.\n\nEach interior angle of a regular pentagon is 108°, of a regular hexagon 120°, of a regular octagon 135° and of a regular decagon 144°."
+            "- A polygon is **equilateral** if all its sides are equal.\n- A polygon is **equiangular** if all its angles are equal.\n- A **regular polygon** is both equilateral and equiangular.\n- An **irregular polygon** is not regular: its sides or its angles are not all equal.\n\nA regular triangle is called an **equilateral triangle**, and a regular quadrilateral is a **square**. For other regular polygons we add the word regular: regular pentagon, regular hexagon, and so on."
+          ),
+          text(
+            "Angles of the regular polygons",
+            "Measure the angles of these regular polygons and you find:\n\n| Regular polygon | Each interior angle | Sum of the interior angles |\n|---|---|---|\n| Pentagon (5 sides) | 108° | 540° |\n| Hexagon (6 sides) | 120° | 720° |\n| Octagon (8 sides) | 135° | 1,080° |\n| Decagon (10 sides) | 144° | 1,440° |\n\nThe sum of the interior angles is the same for a regular and an irregular polygon with the same number of sides. In Week 3 you will see why."
           ),
           example(
             "Worked example: Regular or irregular?",
@@ -177,16 +253,49 @@ const SPECS: LessonSpec[] = [
             "A regular polygon has interior angles of 135° each. Which polygon is it?",
             ["Regular pentagon", "Regular hexagon", "Regular octagon", "Regular decagon"],
             "Regular octagon",
-            "From the list of angles: pentagon 108°, hexagon 120°, octagon 135°, decagon 144°. So 135° is a regular octagon."
+            "From the table: pentagon 108°, hexagon 120°, octagon 135°, decagon 144°. So 135° is a regular octagon."
+          ),
+          checkpoint(
+            "Checkpoint: Sum of the angles",
+            "What is the sum of the interior angles of an octagon?",
+            ["720°", "900°", "1,080°", "1,440°"],
+            "1,080°",
+            "From the table, an octagon's interior angles add up to 1,080°."
+          ),
+          summary(
+            "Lesson summary",
+            "- A regular polygon has all sides equal and all angles equal. Otherwise it is irregular.\n- A regular triangle is an equilateral triangle, and a regular quadrilateral is a square.\n- Each interior angle is 108° in a regular pentagon, 120° in a regular hexagon, 135° in a regular octagon and 144° in a regular decagon."
           ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w1_l3",
+    termNumber: 1,
+    unitTitle: POLYGONS,
+    sequenceOrder: 3,
+    title: "Week 1 · Draw polygons",
+    description:
+      "Draw regular polygons with 5, 6, 8 or 10 sides, and triangles and quadrilaterals with given angle measures, using a ruler, protractor and compass.",
+    learningObjectives: [
+      "Draw regular polygons with 5, 6, 8 or 10 sides",
+      "Draw triangles and quadrilaterals with given angle measures",
+    ],
+    documents: [LE1],
+    videos: [
+      video("0mw2ZRlxNQM", "Grade 7 & Grade 4 MATH: Review on How to Measure Angles Using Protractor | MATATAG T1/Q1 (Tagalog)"),
+      video("hmmv9XtPPc0", "Grade 7 & Grade 4 MATH: Review on Drawing Angles Using Protractor | MATATAG - T1/Q1 (Tagalog)"),
+      video("hlVgAIClhgM", "Grade 7 MATH Term 1 Week 1: How to Draw a Regular Pentagon | MATATAG - Quarter 1 (Tagalog)"),
+      video("yNOdp3hfYfk", "Grade 7 MATH Term 1 Week 1: Drawing Triangles & Quadrilaterals | MATATAG - Quarter 1 (Tagalog)"),
+    ],
+    days: [
       {
         focus: "Drawing regular polygons",
         blocks: [
           text(
             "What you need",
-            "For drawing you need a sharp pencil, a ruler, a protractor and a compass. Measure and draw carefully, because small errors add up."
+            "For drawing you need a sharp pencil, a ruler, a protractor and a compass. If you are not sure how to measure or draw an angle with a protractor, watch the two protractor review videos first."
           ),
           example(
             "Worked example: Drawing a regular pentagon",
@@ -227,7 +336,7 @@ const SPECS: LessonSpec[] = [
         ],
       },
       {
-        focus: "Drawing triangles and quadrilaterals with given angles",
+        focus: "Drawing triangles and quadrilaterals",
         blocks: [
           text(
             "Angles in triangles and quadrilaterals",
@@ -271,28 +380,30 @@ const SPECS: LessonSpec[] = [
           ),
           summary(
             "Lesson summary",
-            "- A polygon is a closed figure made of straight sides that meet only at endpoints.\n- Polygons are named by their number of sides (triangle, quadrilateral, pentagon, hexagon, heptagon, octagon, nonagon, decagon).\n- A regular polygon has all sides equal and all angles equal. Otherwise it is irregular.\n- To draw a regular polygon with n sides, mark points every 360° ÷ n around a circle and join them in order.\n- The angles of a triangle add to 180° and the angles of a quadrilateral add to 360°, which lets you check a drawing."
+            "- To draw a regular polygon with n sides, mark points every 360° ÷ n around a circle and join them in order.\n- The angles of a triangle add to 180° and the angles of a quadrilateral add to 360°, which lets you check a drawing."
           ),
         ],
       },
     ],
   },
 
-  // ================================================================ Week 2
+  // ================================================================ WEEK 2
   {
-    id: "lsn_g7q1_w2",
+    id: "lsn_g7q1_w2_l1",
     termNumber: 1,
-    unitTitle: "Polygons and Angle Relationships",
-    sequenceOrder: 2,
-    title: "Classifying Polygons, and Angle Pairs",
-    description:
-      "Classify polygons by sides, regularity and convexity, and describe complementary, supplementary, adjacent and vertical angles and linear pairs.",
+    unitTitle: POLYGONS,
+    sequenceOrder: 4,
+    title: "Week 2 · Convex and non-convex polygons",
+    description: "Tell convex polygons from non-convex ones, and classify polygons by sides, regularity and convexity.",
     learningObjectives: [
+      "Tell convex polygons from non-convex (concave) polygons",
       "Classify polygons by number of sides, as regular or irregular, and as convex or non-convex",
-      "Define complementary, supplementary and adjacent angles, linear pairs and vertical angles",
-      "Find the measure of an unknown angle using the relationships between angle pairs",
     ],
-    documents: [{ fileName: "LE_MATH-7-Q1_W2.pdf", title: "Lesson Exemplar Q1 Lesson 2 (Teacher Reference)" }],
+    documents: [LE2],
+    videos: [
+      video("g8Y_0BrWIlA", "Grade 7 MATH Term 1 Week 2: Concave and Convex Polygons | MATATAG - Quarter 1 (Tagalog)"),
+      video("O-kpbzRTArY", "Grade 7 MATH Term 1 Week 1-2: Polygon Short Quiz | MATATAG - Quarter 1 (Tagalog)"),
+    ],
     days: [
       {
         focus: "Convex and non-convex polygons",
@@ -313,11 +424,6 @@ const SPECS: LessonSpec[] = [
             "It has at least one interior angle greater than 180°",
             "A non-convex polygon has an interior angle greater than 180°, which makes one vertex point inward."
           ),
-        ],
-      },
-      {
-        focus: "Classifying polygons in three ways",
-        blocks: [
           text(
             "Three ways to classify",
             "Every polygon can be described in three ways:\n\n1. By its **number of sides** (triangle, quadrilateral, pentagon, ...).\n2. As **regular or irregular** (are all sides and all angles equal?).\n3. As **convex or non-convex** (are all interior angles less than 180°?)."
@@ -334,7 +440,7 @@ const SPECS: LessonSpec[] = [
           ),
           checkpoint(
             "Checkpoint: Classify it",
-            "A polygon has 5 equal sides, 5 equal angles of 108°. How is it classified?",
+            "A polygon has 5 equal sides and 5 equal angles of 108°. How is it classified?",
             [
               "Regular, convex pentagon",
               "Irregular, convex pentagon",
@@ -344,26 +450,36 @@ const SPECS: LessonSpec[] = [
             "Regular, convex pentagon",
             "It has 5 sides, so it is a pentagon. Its sides and angles are all equal, so it is regular. All angles are less than 180°, so it is convex."
           ),
-          checkpoint(
-            "Checkpoint: Can an irregular polygon be convex?",
-            "Which statement is true?",
-            [
-              "Every irregular polygon is non-convex",
-              "An irregular polygon can be convex if all its angles are less than 180°",
-              "Every convex polygon is regular",
-              "Convex polygons must have 4 sides",
-            ],
-            "An irregular polygon can be convex if all its angles are less than 180°",
-            "Convex only depends on the angles being less than 180°. A scalene triangle is irregular and convex."
+          summary(
+            "Lesson summary",
+            "- Convex polygon: all interior angles are less than 180°. Non-convex polygon: at least one interior angle is greater than 180°.\n- Classify a polygon by its sides, as regular or irregular, and as convex or non-convex.\n- After this lesson you can try the Week 1 to 2 polygon quiz video."
           ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w2_l2",
+    termNumber: 1,
+    unitTitle: POLYGONS,
+    sequenceOrder: 5,
+    title: "Week 2 · Angle pairs",
+    description:
+      "Describe complementary, supplementary and adjacent angles, linear pairs and vertical angles, and find unknown angles.",
+    learningObjectives: [
+      "Define complementary, supplementary and adjacent angles, linear pairs and vertical angles",
+      "Describe the relationships between angle pairs based on their measures",
+      "Find an unknown angle using these relationships",
+    ],
+    documents: [LE2],
+    videos: [],
+    days: [
       {
-        focus: "Complementary and supplementary angles",
+        focus: "Complementary, supplementary and adjacent angles",
         blocks: [
           text(
-            "Angle pairs: complementary and supplementary",
-            "- **Complementary angles** are two angles whose measures add up to **90°**.\n- **Supplementary angles** are two angles whose measures add up to **180°**.\n\nThe two angles do not have to be next to each other."
+            "Angle pairs",
+            "- **Complementary angles** are two angles whose measures add up to **90°**.\n- **Supplementary angles** are two angles whose measures add up to **180°**.\n- **Adjacent angles** share a vertex and a side, and do not overlap.\n\nComplementary and supplementary angles do not have to be next to each other."
           ),
           example(
             "Worked example: Complement and supplement",
@@ -391,11 +507,11 @@ const SPECS: LessonSpec[] = [
         ],
       },
       {
-        focus: "Adjacent angles, linear pairs and vertical angles",
+        focus: "Linear pairs and vertical angles",
         blocks: [
           text(
-            "Adjacent angles, linear pairs, vertical angles",
-            "- **Adjacent angles** share a vertex and a side, and do not overlap.\n- A **linear pair** is two adjacent angles whose non-shared sides form a straight line. A linear pair is always supplementary (180°).\n- **Vertical angles** are the opposite angles formed when two lines intersect. Vertical angles are always equal."
+            "Linear pairs and vertical angles",
+            "- A **linear pair** is two adjacent angles whose non-shared sides form a straight line. A linear pair is always supplementary (180°).\n- **Vertical angles** are the opposite angles formed when two lines intersect. Vertical angles are always equal."
           ),
           example(
             "Worked example: Two intersecting lines",
@@ -423,36 +539,31 @@ const SPECS: LessonSpec[] = [
           ),
           summary(
             "Lesson summary",
-            "- Classify polygons by sides, as regular or irregular, and as convex (all angles less than 180°) or non-convex (an angle greater than 180°).\n- Complementary angles add to 90°. Supplementary angles add to 180°.\n- A linear pair is two adjacent angles that form a straight line, so they add to 180°.\n- Vertical angles are opposite each other when two lines intersect, and they are equal."
+            "- Complementary angles add to 90°. Supplementary angles add to 180°.\n- A linear pair is two adjacent angles that form a straight line, so they add to 180°.\n- Vertical angles are opposite each other when two lines intersect, and they are equal."
           ),
         ],
       },
     ],
   },
 
-  // ================================================================ Week 3
+  // ================================================================ WEEK 3
   {
-    id: "lsn_g7q1_w3",
+    id: "lsn_g7q1_w3_l1",
     termNumber: 1,
-    unitTitle: "Polygons and Angle Relationships",
-    sequenceOrder: 3,
-    title: "Interior and Exterior Angles of Polygons",
-    description:
-      "Relate an exterior angle to its adjacent interior angle, and find angle measures and the number of sides of a polygon.",
-    learningObjectives: [
-      "Identify the interior and exterior angles of a polygon",
-      "Deduce that an exterior angle and its adjacent interior angle add up to 180°",
-      "Find the sum of the interior angles and the sum of the exterior angles of a polygon",
-      "Determine the angle measures and the number of sides of a regular polygon",
-    ],
-    documents: [{ fileName: "LE_MATH-7-Q1_W3.pdf", title: "Lesson Exemplar Q1 Lesson 3 (Teacher Reference)" }],
+    unitTitle: POLYGONS,
+    sequenceOrder: 6,
+    title: "Week 3 · Interior and exterior angles",
+    description: "Identify the interior and exterior angles of a polygon.",
+    learningObjectives: ["Define interior and exterior angles of a polygon", "Identify them in a polygon"],
+    documents: [LE3],
+    videos: [],
     days: [
       {
         focus: "Interior and exterior angles",
         blocks: [
           text(
             "Interior and exterior angles",
-            "An **interior angle** of a polygon is formed inside the polygon by two sides that meet at a vertex.\n\nAn **exterior angle** is formed outside the polygon when one side is extended past a vertex. It is the angle between that extension and the next side.\n\nAt each vertex there is one interior angle and, next to it, an exterior angle."
+            "An **interior angle** of a polygon is formed inside the polygon by two sides that meet at a vertex.\n\nAn **exterior angle** is formed outside the polygon when one side is extended past a vertex. It is the angle between that extension and the next side.\n\nAt each vertex there is one interior angle and, next to it, an exterior angle. The two are **adjacent**."
           ),
           checkpoint(
             "Checkpoint: Interior or exterior?",
@@ -461,14 +572,41 @@ const SPECS: LessonSpec[] = [
             "Exterior angle",
             "An angle formed outside the polygon by extending a side is an exterior angle."
           ),
+          checkpoint(
+            "Checkpoint: How many?",
+            "A pentagon has one interior angle at each vertex. How many interior angles does it have?",
+            ["3", "4", "5", "10"],
+            "5",
+            "There is one interior angle at each of the 5 vertices."
+          ),
+          summary(
+            "Lesson summary",
+            "- An interior angle is inside the polygon at a vertex.\n- An exterior angle is outside the polygon, formed by extending a side.\n- The exterior angle and the interior angle at the same vertex are adjacent."
+          ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w3_l2",
+    termNumber: 1,
+    unitTitle: POLYGONS,
+    sequenceOrder: 7,
+    title: "Week 3 · An exterior angle and its adjacent interior angle",
+    description: "Deduce that an exterior angle and its adjacent interior angle add up to 180°, and use it.",
+    learningObjectives: [
+      "Deduce the relationship between an exterior angle and its adjacent interior angle",
+      "Use the relationship to find an unknown angle",
+    ],
+    documents: [LE3],
+    videos: [],
+    days: [
       {
-        focus: "Exterior angle and adjacent interior angle",
+        focus: "The relationship",
         blocks: [
           text(
             "The relationship",
-            "At each vertex, the exterior angle and the interior angle next to it form a **linear pair**, so\n\n**exterior angle + adjacent interior angle = 180°**."
+            "At each vertex, the exterior angle and the interior angle next to it form a **linear pair**, so\n\n**exterior angle + adjacent interior angle = 180°**.\n\nThey are supplementary angles."
           ),
           example(
             "Worked example: Exterior and adjacent interior",
@@ -480,6 +618,15 @@ const SPECS: LessonSpec[] = [
             ],
             "The adjacent interior angle is 80°."
           ),
+          example(
+            "Worked example: Use a triangle",
+            "A triangle has interior angles of 38° and 60°. Find its third interior angle and the exterior angle next to that third angle.",
+            [
+              "The interior angles of a triangle add up to 180°, so the third angle is 180° − 38° − 60° = 82°.",
+              "The exterior angle next to it is supplementary: 180° − 82° = 98°.",
+            ],
+            "The third interior angle is 82° and its exterior angle is 98°."
+          ),
           checkpoint(
             "Checkpoint: Adjacent interior angle",
             "An exterior angle of a polygon measures 55°. What is the adjacent interior angle?",
@@ -487,10 +634,35 @@ const SPECS: LessonSpec[] = [
             "125°",
             "The exterior angle and its adjacent interior angle add up to 180°, so the interior angle is 180° − 55° = 125°."
           ),
+          checkpoint(
+            "Checkpoint: Adjacent exterior angle",
+            "An interior angle of a polygon measures 107°. What is the adjacent exterior angle?",
+            ["63°", "73°", "83°", "107°"],
+            "73°",
+            "The two angles add up to 180°, so the exterior angle is 180° − 107° = 73°."
+          ),
+          summary("Lesson summary", "- Exterior angle + adjacent interior angle = 180°. They form a linear pair."),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w3_l3",
+    termNumber: 1,
+    unitTitle: POLYGONS,
+    sequenceOrder: 8,
+    title: "Week 3 · Measures of the angles of a polygon",
+    description: "Find the sum of the interior angles of a polygon and use it to find a missing angle.",
+    learningObjectives: [
+      "Find the sum of the interior angles of a polygon",
+      "Recall that the exterior angles of a polygon add up to 360°",
+      "Find a missing angle of a polygon",
+    ],
+    documents: [LE3],
+    videos: [],
+    days: [
       {
-        focus: "Sum of the interior angles",
+        focus: "Sum of the interior angles and missing angles",
         blocks: [
           text(
             "Sum of the angles of a polygon",
@@ -512,6 +684,16 @@ const SPECS: LessonSpec[] = [
             ],
             "The fifth angle is 120°."
           ),
+          example(
+            "Worked example: Equal unknown angles",
+            "A pentagon has three right angles and two equal angles, each x. Find x.",
+            [
+              "The sum of the interior angles is 540°.",
+              "Write the equation: x + x + 90° + 90° + 90° = 540°, so 2x + 270° = 540°.",
+              "Subtract 270°: 2x = 270°, so x = 135°.",
+            ],
+            "x = 135°."
+          ),
           checkpoint(
             "Checkpoint: Sum of interior angles",
             "What is the sum of the interior angles of a hexagon?",
@@ -519,14 +701,51 @@ const SPECS: LessonSpec[] = [
             "720°",
             "A hexagon has n = 6 sides, so the sum is (6 − 2) × 180° = 4 × 180° = 720°."
           ),
+          checkpoint(
+            "Checkpoint: Sixth angle",
+            "Five angles of a hexagon measure 100°, 110°, 120°, 130° and 140°. What is the sixth angle?",
+            ["100°", "110°", "120°", "130°"],
+            "120°",
+            "The five angles add up to 600°. The sum for a hexagon is 720°, so the sixth angle is 720° − 600° = 120°."
+          ),
+          summary(
+            "Lesson summary",
+            "- The interior angles of an n-sided polygon add up to (n − 2) × 180°.\n- The exterior angles of any polygon add up to 360°.\n- To find a missing angle, subtract the known angles from the sum."
+          ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w3_l4",
+    termNumber: 1,
+    unitTitle: POLYGONS,
+    sequenceOrder: 9,
+    title: "Week 3 · Angles and sides of regular polygons",
+    description: "Find each angle of a regular polygon and the number of sides of a regular polygon.",
+    learningObjectives: [
+      "Find each interior and exterior angle of a regular polygon",
+      "Determine the number of sides of a regular polygon from its angle",
+    ],
+    documents: [LE3],
+    videos: [],
+    days: [
       {
-        focus: "Regular polygons: each angle and the number of sides",
+        focus: "Each angle of a regular polygon",
         blocks: [
           text(
             "Regular polygons",
-            "For a **regular** polygon with n sides:\n\n- Each exterior angle = 360° ÷ n\n- Each interior angle = 180° − (each exterior angle), or (n − 2) × 180° ÷ n\n\nThe number of sides is n = 360° ÷ (each exterior angle)."
+            "For a **regular** polygon with n sides:\n\n- Each interior angle = (n − 2) × 180° ÷ n\n- Each exterior angle = 360° ÷ n\n- Each interior angle + each exterior angle = 180°."
+          ),
+          example(
+            "Worked example: Regular octagon",
+            "Find the measure of each interior angle of a regular octagon.",
+            [
+              "An octagon has n = 8 sides.",
+              "The sum of the interior angles is (8 − 2) × 180° = 1,080°.",
+              "Each angle is 1,080° ÷ 8 = 135°.",
+            ],
+            "Each interior angle is 135°."
           ),
           example(
             "Worked example: Regular decagon",
@@ -538,18 +757,33 @@ const SPECS: LessonSpec[] = [
             ],
             "Each exterior angle is 36° and each interior angle is 144°."
           ),
-          example(
-            "Worked example: How many sides?",
-            "Each exterior angle of a regular polygon is 40°. How many sides does it have?",
-            ["Use n = 360° ÷ (each exterior angle).", "n = 360° ÷ 40° = 9."],
-            "The polygon has 9 sides (a regular nonagon)."
-          ),
           checkpoint(
             "Checkpoint: Exterior angle of a regular octagon",
             "What is each exterior angle of a regular octagon?",
             ["36°", "40°", "45°", "135°"],
             "45°",
             "Each exterior angle of a regular polygon is 360° ÷ n = 360° ÷ 8 = 45°. (135° is each interior angle.)"
+          ),
+        ],
+      },
+      {
+        focus: "The number of sides of a regular polygon",
+        blocks: [
+          example(
+            "Worked example: From the exterior angle",
+            "Each exterior angle of a regular polygon is 40°. How many sides does it have?",
+            ["Use n = 360° ÷ (each exterior angle).", "n = 360° ÷ 40° = 9."],
+            "The polygon has 9 sides (a regular nonagon)."
+          ),
+          example(
+            "Worked example: From the interior angle",
+            "Each interior angle of a regular polygon is 144°. How many sides does it have?",
+            [
+              "The exterior angle is 180° − 144° = 36°.",
+              "n = 360° ÷ 36° = 10.",
+              "Check with the formula: (10 − 2) × 180° ÷ 10 = 144°.",
+            ],
+            "The polygon has 10 sides, a regular decagon."
           ),
           checkpoint(
             "Checkpoint: Number of sides",
@@ -558,38 +792,43 @@ const SPECS: LessonSpec[] = [
             "18",
             "n = 360° ÷ 20° = 18."
           ),
+          checkpoint(
+            "Checkpoint: From the interior angle",
+            "Each interior angle of a regular polygon is 150°. How many sides does it have?",
+            ["10", "12", "15", "18"],
+            "12",
+            "The exterior angle is 180° − 150° = 30°, so n = 360° ÷ 30° = 12."
+          ),
           summary(
             "Lesson summary",
-            "- Exterior angle + adjacent interior angle = 180°.\n- The interior angles of an n-sided polygon add up to (n − 2) × 180°.\n- The exterior angles of any polygon add up to 360°.\n- In a regular polygon, each exterior angle is 360° ÷ n, and each interior angle is 180° minus that."
+            "- In a regular polygon each exterior angle is 360° ÷ n, and each interior angle is 180° minus that.\n- The number of sides is n = 360° ÷ (each exterior angle)."
           ),
         ],
       },
     ],
   },
 
-  // ================================================================ Week 4
+  // ================================================================ WEEK 4
   {
-    id: "lsn_g7q1_w4",
+    id: "lsn_g7q1_w4_l1",
     termNumber: 1,
-    unitTitle: "Percentages and Rates",
+    unitTitle: PERCENT,
     sequenceOrder: 1,
-    title: "Percentage Change and Money Problems",
-    description:
-      "Solve problems on percentage increase and decrease, and money problems on discount, sale price, sales tax, commission and simple interest.",
+    title: "Week 4 · Percentage increase",
+    description: "Solve problems involving percentage increase.",
     learningObjectives: [
-      "Solve problems involving percentage increase",
-      "Solve problems involving percentage decrease",
-      "Solve money problems involving discount, sale price and sales tax",
-      "Solve money problems involving commission and simple interest",
+      "Calculate the percentage increase from an original value and a new value",
+      "Find the new value after a given percentage increase",
     ],
-    documents: [{ fileName: "LE_MATH-7-Q1_W4.pdf", title: "Lesson Exemplar Q1 Lesson 4 (Teacher Reference)" }],
+    documents: [LE4],
+    videos: [],
     days: [
       {
         focus: "Percentage increase",
         blocks: [
           text(
-            "Measuring change with percentages",
-            "A **percentage change** compares the amount of change to the **original value**.\n\n- **Percentage increase** = (new value − original value) ÷ original value × 100%\n- **Percentage decrease** = (original value − new value) ÷ original value × 100%\n\nAlways divide by the **original** value, not the new one."
+            "Measuring an increase with percentages",
+            "A **percentage increase** compares the amount of increase to the **original value**.\n\n**Percentage increase = (new value − original value) ÷ original value × 100%**\n\nAlways divide by the **original** value, not the new one."
           ),
           example(
             "Worked example: Is the claim true?",
@@ -600,6 +839,12 @@ const SPECS: LessonSpec[] = [
               "Write it as a percent: 0.40 × 100% = 40%.",
             ],
             "The increase is 40%, not 30%, so the salesman is wrong. A 30% increase would give ₱200 + ₱60 = ₱260."
+          ),
+          example(
+            "Worked example: Finding the new value",
+            "A ₱350 item increases in price by 20%. What is the new price?",
+            ["Find the increase: 20% of ₱350 = 0.20 × 350 = ₱70.", "Add it to the original price: ₱350 + ₱70 = ₱420."],
+            "The new price is ₱420. (Shortcut: 350 × 1.20 = 420.)"
           ),
           checkpoint(
             "Checkpoint: Percentage increase",
@@ -615,11 +860,35 @@ const SPECS: LessonSpec[] = [
             "₱280",
             "The increase is 12% of 250 = 0.12 × 250 = ₱30, so the new price is ₱250 + ₱30 = ₱280."
           ),
+          summary(
+            "Lesson summary",
+            "- Percentage increase = (new − original) ÷ original × 100%.\n- New value = original + (percent × original).\n- The percentage is always based on the original value."
+          ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w4_l2",
+    termNumber: 1,
+    unitTitle: PERCENT,
+    sequenceOrder: 2,
+    title: "Week 4 · Percentage decrease",
+    description: "Solve problems involving percentage decrease.",
+    learningObjectives: [
+      "Calculate the percentage decrease from an original value and a new value",
+      "Find the new value after a given percentage decrease",
+    ],
+    documents: [LE4],
+    videos: [],
+    days: [
       {
         focus: "Percentage decrease",
         blocks: [
+          text(
+            "Measuring a decrease with percentages",
+            "A **percentage decrease** compares the amount of decrease to the **original value**.\n\n**Percentage decrease = (original value − new value) ÷ original value × 100%**"
+          ),
           example(
             "Worked example: Percentage decrease",
             "The price of a bag falls from ₱500 to ₱400. Find the percentage decrease.",
@@ -633,10 +902,7 @@ const SPECS: LessonSpec[] = [
           example(
             "Worked example: Finding the new value",
             "A ₱350 item is reduced in price by 20%. What is the new price?",
-            [
-              "Find the decrease: 20% of ₱350 = 0.20 × 350 = ₱70.",
-              "Subtract it from the original price: ₱350 − ₱70 = ₱280.",
-            ],
+            ["Find the decrease: 20% of ₱350 = 0.20 × 350 = ₱70.", "Subtract it from the original price: ₱350 − ₱70 = ₱280."],
             "The new price is ₱280. (Shortcut: 350 × 0.80 = 280.)"
           ),
           checkpoint(
@@ -658,14 +924,31 @@ const SPECS: LessonSpec[] = [
             "The percentage increase is 50% and the percentage decrease is about 33%",
             "The increase is 25 ÷ 50 = 50% of the original ₱50. The decrease is 25 ÷ 75 = about 33% of the original ₱75. The original value is different each time."
           ),
+          summary(
+            "Lesson summary",
+            "- Percentage decrease = (original − new) ÷ original × 100%.\n- New value = original − (percent × original).\n- The percentage is based on the original value, which is different each time."
+          ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w4_l3",
+    termNumber: 1,
+    unitTitle: PERCENT,
+    sequenceOrder: 3,
+    title: "Week 4 · Money problems: discount and sale price",
+    description: "Find the discount and the sale price of an item using percentage.",
+    learningObjectives: ["Define discount, sale price and original (selling) price", "Find the discount and the sale price"],
+    documents: [LE5],
+    videos: [],
+    days: [
       {
-        focus: "Money problems: discount, sale price and sales tax",
+        focus: "Discount and sale price",
         blocks: [
           text(
-            "Discount, sale price and sales tax",
-            "- **Discount** is the amount taken off the original price. Discount = discount rate × original price.\n- **Sale price** = original price − discount.\n- **Sales tax** is a percentage of the price that is added when you buy. Sales tax = tax rate × price, and total cost = price + sales tax."
+            "Discount and sale price",
+            "- The **original price** (selling price) is the price without a discount.\n- A **discount** is the reduction in the original price.\n- The **sale price** is the final price after the discount.\n\n**Discount = original price × rate of discount**\n\n**Sale price = original price − discount**"
           ),
           example(
             "Worked example: Discount",
@@ -674,10 +957,14 @@ const SPECS: LessonSpec[] = [
             "The discount is ₱200 and the sale price is ₱600."
           ),
           example(
-            "Worked example: Sales tax",
-            "A bag costs ₱1,500. A 12% sales tax is added. What is the total cost?",
-            ["Sales tax = 12% of ₱1,500 = 0.12 × 1,500 = ₱180.", "Total cost = ₱1,500 + ₱180 = ₱1,680."],
-            "The total cost is ₱1,680."
+            "Worked example: Find the original price",
+            "After a 20% discount a pair of shoes costs ₱720. What was the original price?",
+            [
+              "The sale price is 100% − 20% = 80% of the original price.",
+              "So 0.80 × original price = 720.",
+              "Original price = 720 ÷ 0.80 = ₱900.",
+            ],
+            "The original price was ₱900."
           ),
           checkpoint(
             "Checkpoint: Sale price",
@@ -687,20 +974,37 @@ const SPECS: LessonSpec[] = [
             "Discount = 0.15 × 1,200 = ₱180. Sale price = 1,200 − 180 = ₱1,020."
           ),
           checkpoint(
-            "Checkpoint: Total cost with tax",
-            "An item costs ₱500 and a 12% sales tax is added. What is the total cost?",
-            ["₱512", "₱560", "₱600", "₱620"],
-            "₱560",
-            "Sales tax = 0.12 × 500 = ₱60, so the total cost is 500 + 60 = ₱560."
+            "Checkpoint: Discount",
+            "A bag costs ₱600 and is sold at 30% off. How much is the discount?",
+            ["₱30", "₱180", "₱420", "₱570"],
+            "₱180",
+            "Discount = 0.30 × 600 = ₱180. (The sale price would be ₱420.)"
+          ),
+          summary(
+            "Lesson summary",
+            "- Discount = original price × rate of discount.\n- Sale price = original price − discount.\n- If the sale price and rate are known, original price = sale price ÷ (1 − rate)."
           ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w4_l4",
+    termNumber: 1,
+    unitTitle: PERCENT,
+    sequenceOrder: 4,
+    title: "Week 4 · Money problems: commission and sales tax",
+    description: "Solve problems on commission and sales tax using percentage.",
+    learningObjectives: ["Define commission, commission rate and sales tax (VAT)", "Solve problems on commission and sales tax"],
+    documents: [LE5],
+    videos: [],
+    days: [
       {
-        focus: "Money problems: commission and simple interest",
+        focus: "Commission and sales tax",
         blocks: [
           text(
-            "Commission and simple interest",
-            "- **Commission** is a payment, usually a percentage of sales, that a seller earns. Commission = commission rate × total sales.\n- **Simple interest** is the money earned (or paid) on an amount over time: **I = P × r × t**, where P is the principal (the starting amount), r is the yearly rate written as a decimal, and t is the time in years."
+            "Commission and sales tax",
+            "- **Commission** is the money a person earns from selling something.\n- The **commission rate** is the percent of the sales that the seller receives.\n- **Sales tax** is a percentage added to the price when you buy. It is commonly known as Value Added Tax (VAT).\n\n**Commission = commission rate × total sales**\n\n**Sales tax = tax rate × price**, and **total cost = price + sales tax**"
           ),
           example(
             "Worked example: Commission",
@@ -709,14 +1013,16 @@ const SPECS: LessonSpec[] = [
             "Her commission is ₱3,600."
           ),
           example(
-            "Worked example: Simple interest",
-            "Mia saves ₱5,000 in a bank at 4% simple interest per year. How much interest does she earn in 3 years, and what is her total?",
-            [
-              "P = ₱5,000, r = 4% = 0.04, t = 3 years.",
-              "I = P × r × t = 5,000 × 0.04 × 3 = ₱600.",
-              "Total = ₱5,000 + ₱600 = ₱5,600.",
-            ],
-            "She earns ₱600 interest and has ₱5,600 in total."
+            "Worked example: Commission rate",
+            "An agent received ₱2,400 after selling a gadget for ₱30,000. What is the commission rate?",
+            ["Commission rate = commission ÷ sales = 2,400 ÷ 30,000 = 0.08.", "Write it as a percent: 0.08 × 100% = 8%."],
+            "The commission rate is 8%."
+          ),
+          example(
+            "Worked example: Sales tax",
+            "A laptop is priced at ₱25,000 plus 12% VAT. How much is the tax, and what is the total cost?",
+            ["Sales tax = 12% of ₱25,000 = 0.12 × 25,000 = ₱3,000.", "Total cost = ₱25,000 + ₱3,000 = ₱28,000."],
+            "The tax is ₱3,000 and the total cost is ₱28,000."
           ),
           checkpoint(
             "Checkpoint: Commission",
@@ -726,56 +1032,120 @@ const SPECS: LessonSpec[] = [
             "Commission = 0.05 × 20,000 = ₱1,000."
           ),
           checkpoint(
+            "Checkpoint: Total cost with tax",
+            "An item costs ₱500 and a 12% sales tax is added. What is the total cost?",
+            ["₱512", "₱560", "₱600", "₱620"],
+            "₱560",
+            "Sales tax = 0.12 × 500 = ₱60, so the total cost is 500 + 60 = ₱560."
+          ),
+          summary(
+            "Lesson summary",
+            "- Commission = commission rate × total sales.\n- Commission rate = commission ÷ sales.\n- Sales tax = tax rate × price; total cost = price + sales tax."
+          ),
+        ],
+      },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w4_l5",
+    termNumber: 1,
+    unitTitle: PERCENT,
+    sequenceOrder: 5,
+    title: "Week 4 · Money problems: simple interest",
+    description: "Solve for simple interest, and for the principal, the rate or the time.",
+    learningObjectives: [
+      "Define interest, interest rate, principal and time",
+      "Solve for simple interest using I = Prt",
+      "Solve for the principal, the rate or the time",
+    ],
+    documents: [LE5],
+    videos: [],
+    days: [
+      {
+        focus: "Simple interest",
+        blocks: [
+          text(
+            "Simple interest",
+            "- **Interest** is the money earned from investing, or paid for borrowing, money.\n- The **principal (P)** is the amount invested or borrowed.\n- The **interest rate (r)** is the percent of interest per year, written as a decimal.\n- The **time (t)** is the number of years.\n\n**I = P × r × t**\n\nRearranging gives **P = I ÷ (r × t)**, **r = I ÷ (P × t)** and **t = I ÷ (P × r)**."
+          ),
+          example(
+            "Worked example: Find the interest",
+            "Mia saves ₱5,000 in a bank at 4% simple interest per year. How much interest does she earn in 3 years, and what is her total?",
+            [
+              "P = ₱5,000, r = 4% = 0.04, t = 3 years.",
+              "I = P × r × t = 5,000 × 0.04 × 3 = ₱600.",
+              "Total = ₱5,000 + ₱600 = ₱5,600.",
+            ],
+            "She earns ₱600 interest and has ₱5,600 in total."
+          ),
+          example(
+            "Worked example: Find the principal",
+            "How much must be invested at 5% simple interest to earn ₱900 in 3 years?",
+            ["P = I ÷ (r × t) = 900 ÷ (0.05 × 3).", "0.05 × 3 = 0.15, so P = 900 ÷ 0.15 = ₱6,000."],
+            "₱6,000 must be invested."
+          ),
+          example(
+            "Worked example: Find the rate",
+            "₱10,000 earns ₱1,500 simple interest in 3 years. What is the interest rate per year?",
+            ["r = I ÷ (P × t) = 1,500 ÷ (10,000 × 3) = 1,500 ÷ 30,000 = 0.05.", "Write it as a percent: 0.05 × 100% = 5%."],
+            "The rate is 5% per year."
+          ),
+          example(
+            "Worked example: Find the time",
+            "₱12,000 is invested at 4% simple interest and earns ₱1,440. For how many years?",
+            ["t = I ÷ (P × r) = 1,440 ÷ (12,000 × 0.04).", "12,000 × 0.04 = 480, so t = 1,440 ÷ 480 = 3."],
+            "The money was invested for 3 years."
+          ),
+          checkpoint(
             "Checkpoint: Simple interest",
             "How much simple interest is earned on ₱2,000 at 5% per year for 2 years?",
             ["₱100", "₱200", "₱2,200", "₱4,000"],
             "₱200",
             "I = P × r × t = 2,000 × 0.05 × 2 = ₱200."
           ),
+          checkpoint(
+            "Checkpoint: Find the principal",
+            "A savings account at 4% simple interest earns ₱480 in 2 years. What is the principal?",
+            ["₱3,840", "₱6,000", "₱9,600", "₱12,000"],
+            "₱6,000",
+            "P = I ÷ (r × t) = 480 ÷ (0.04 × 2) = 480 ÷ 0.08 = ₱6,000."
+          ),
           summary(
             "Lesson summary",
-            "- Percentage increase = (new − original) ÷ original × 100%. Percentage decrease = (original − new) ÷ original × 100%. The percentage is always based on the original value.\n- Discount = rate × original price; sale price = original price − discount.\n- Sales tax = rate × price; total cost = price + tax.\n- Commission = rate × sales.\n- Simple interest I = P × r × t."
+            "- Simple interest I = P × r × t, with r as a decimal and t in years.\n- P = I ÷ (r × t), r = I ÷ (P × t), t = I ÷ (P × r)."
           ),
         ],
       },
     ],
   },
 
-  // ================================================================ Week 5
+  // ================================================================ WEEK 5
   {
-    id: "lsn_g7q1_w5",
+    id: "lsn_g7q1_w5_l1",
     termNumber: 1,
-    unitTitle: "Percentages and Rates",
-    sequenceOrder: 2,
-    title: "Creating a Financial Plan",
-    description: "Use percentages to plan how to use money, and write a formula for a daily personal financial plan.",
+    unitTitle: PERCENT,
+    sequenceOrder: 6,
+    title: "Week 5 · Create a financial plan",
+    description: "Create a one-day personal budget and write a formula for a daily personal financial plan.",
     learningObjectives: [
-      "Describe income, expenses and savings, and needs and wants",
-      "Create a one-day budget plan using percentages of an income",
-      "Write and use a formula for a daily personal financial plan",
-      "Check whether a plan is balanced",
+      "Create a one-day financial (budget) plan",
+      "Create a formula for a daily personal financial plan",
     ],
-    documents: [{ fileName: "LE_MATH-7-Q1_W5.pdf", title: "Lesson Exemplar Q1 Lesson 5 (Teacher Reference)" }],
+    documents: [LE5],
+    videos: [],
     days: [
       {
-        focus: "Income, expenses and savings",
+        focus: "Your daily income, expenses and savings",
         blocks: [
           text(
-            "Where does money go?",
-            "- **Income** is the money you receive, such as an allowance.\n- **Expenses** are the money you spend.\n- **Savings** are the money you keep for later.\n\nExpenses can be **needs** (things you must have, such as food and transportation to school) or **wants** (things that are nice to have). A good plan pays for needs first and sets aside savings."
+            "Where does your money go?",
+            "- **Income** is the money you receive, such as an allowance.\n- **Expenses** are the money you spend.\n- **Savings** are the money you keep.\n\nEven a student can plan how a daily allowance is used. **Savings = income − expenses.**"
           ),
           example(
             "Worked example: Savings from income and expenses",
-            "Ana receives a daily allowance of ₱150. She spends ₱75 on food and ₱30 on transportation. How much is left for savings?",
+            "Ana receives a daily allowance of ₱150. She spends ₱75 on food and ₱30 on transportation. How much is left to save?",
             ["Total expenses = ₱75 + ₱30 = ₱105.", "Savings = income − expenses = ₱150 − ₱105 = ₱45."],
-            "Ana has ₱45 left for savings and other uses."
-          ),
-          checkpoint(
-            "Checkpoint: Need or want?",
-            "Which of these is a need?",
-            ["A new video game", "Food for lunch", "A toy", "Concert tickets"],
-            "Food for lunch",
-            "Food is something you must have every day, so it is a need. The others are wants."
+            "Ana has ₱45 left to save."
           ),
           checkpoint(
             "Checkpoint: Savings",
@@ -787,11 +1157,11 @@ const SPECS: LessonSpec[] = [
         ],
       },
       {
-        focus: "Planning with percentages",
+        focus: "A one-day plan and its formula",
         blocks: [
           text(
             "A plan in percentages",
-            "A **financial plan** gives each use of your money a percentage of your income. The percentages must add up to **100%** so that all of the money is planned.\n\nAmount for a use = percent × income."
+            "A **financial plan** gives each use of your money a percentage of your income. The percentages must add up to **100%** so that all of the money is planned.\n\n**Formula:** the amount for a use is **A = (p ÷ 100) × I**, where I is your daily income and p is the percent for that use.\n\nTogether with **S = I − E**, this lets you make a plan for any income by changing the value of I."
           ),
           example(
             "Worked example: A one-day plan",
@@ -818,103 +1188,41 @@ const SPECS: LessonSpec[] = [
             "20%",
             "40% + 25% + 15% = 80%, so 100% − 80% = 20% is left. That is ₱40."
           ),
-        ],
-      },
-      {
-        focus: "A formula for a daily plan",
-        blocks: [
-          text(
-            "Writing a formula",
-            "Let **I** be your daily income, **E** your total expenses and **S** your savings.\n\n- **S = I − E**\n- If a use gets p% of the income, its amount is **A = (p ÷ 100) × I**.\n- If you want to save s% of your income, then your spending limit is **E = (100 − s)% of I**.\n\nA formula lets you make a plan for any income by changing the value of I."
-          ),
-          example(
-            "Worked example: Use the formula",
-            "Ben receives ₱120 a day and wants to save 25%. How much can he spend, and how much will he save?",
-            [
-              "Savings = 25% of 120 = 0.25 × 120 = ₱30.",
-              "Spending limit E = 120 − 30 = ₱90 (this is 75% of 120).",
-              "Check with the formula S = I − E: 120 − 90 = ₱30.",
-            ],
-            "Ben can spend ₱90 and will save ₱30 each day."
-          ),
-          example(
-            "Worked example: Savings that grow",
-            "Ben puts his ₱30 daily savings in a jar for 20 school days. How much does he save, and how much will he have if he keeps saving the same amount for 3 months of 20 school days?",
-            [
-              "Savings in 20 days = 30 × 20 = ₱600.",
-              "In 3 months of 20 school days each: 30 × 60 = ₱1,800.",
-            ],
-            "₱600 in one month and ₱1,800 in three months."
-          ),
-          checkpoint(
-            "Checkpoint: Spending limit",
-            "Your income is ₱160 a day and you want to save 25%. What is the most you can spend?",
-            ["₱40", "₱120", "₱135", "₱160"],
-            "₱120",
-            "Savings = 0.25 × 160 = ₱40, so the spending limit is 160 − 40 = ₱120."
-          ),
-        ],
-      },
-      {
-        focus: "Check and create your own plan",
-        blocks: [
-          example(
-            "Worked example: Fix an unbalanced plan",
-            "A plan for ₱100 gives food 45%, transportation 30% and savings 30%. What is wrong, and how can it be fixed?",
-            [
-              "Add the percentages: 45% + 30% + 30% = 105%.",
-              "The plan is 5% over budget, which means it spends ₱5 more than the income.",
-              "Reduce one use by 5%. For example, make savings 25%: now 45% + 30% + 25% = 100%.",
-            ],
-            "The plan was 105% of the income. Changing savings to 25% makes it 100%."
-          ),
-          checkpoint(
-            "Checkpoint: Is the plan balanced?",
-            "A plan uses 50% for food, 30% for transportation and 15% for savings. Which statement is true?",
-            [
-              "The plan is balanced because the percentages add up to 100%",
-              "The plan leaves 5% of the income unplanned",
-              "The plan is 5% over budget",
-              "The plan saves half of the income",
-            ],
-            "The plan leaves 5% of the income unplanned",
-            "50% + 30% + 15% = 95%, so 5% of the income has not been given a use yet."
-          ),
           text(
             "Try it yourself",
             "Create your own one-day financial plan:\n\n1. Choose a daily amount of money (your real allowance or an amount your teacher gives).\n2. List at least four uses, including savings.\n3. Give each use a percentage so that the total is exactly 100%.\n4. Compute the amount for each use and check that the amounts add up to your income.\n5. Write your formula using I, E and S."
           ),
           summary(
             "Lesson summary",
-            "- Income, expenses and savings: savings = income − expenses.\n- A plan gives each use a percentage of the income, and the percentages add up to 100%.\n- Amount for a use = percent × income.\n- A formula such as S = I − E lets you make a plan for any income.\n- Always check the total: more than 100% is over budget, and less than 100% leaves money unplanned."
+            "- Savings = income − expenses.\n- A plan gives each use a percentage of the income, and the percentages add up to 100%.\n- Amount for a use = percent × income."
           ),
         ],
       },
     ],
   },
 
-  // ================================================================ Week 6
+  // ================================================================ WEEK 6
   {
-    id: "lsn_g7q1_w6",
+    id: "lsn_g7q1_w6_l1",
     termNumber: 1,
-    unitTitle: "Percentages and Rates",
-    sequenceOrder: 3,
-    title: "Rates and Unit Rates",
-    description: "Identify rates, express them as unit rates, and solve problems about speed and other rates.",
-    learningObjectives: [
-      "Define a rate and give examples of rates",
-      "Explain the uses of rates",
-      "Express a rate as a unit rate",
-      "Solve problems involving rates such as speed",
-    ],
-    documents: [{ fileName: "LE_MATH-7-Q1_W6.pdf", title: "Lesson Exemplar Q1 Lesson 6 (Teacher Reference)" }],
+    unitTitle: PERCENT,
+    sequenceOrder: 7,
+    title: "Week 6 · Identify rates and explain their uses",
+    description: "Tell rates from ratios, and explain where rates are used.",
+    learningObjectives: ["Define a rate and give examples", "Explain the uses of rates"],
+    documents: [LE6],
+    videos: [],
     days: [
       {
-        focus: "What a rate is",
+        focus: "What a rate is and where it is used",
         blocks: [
           text(
             "Rates and ratios",
             "A **rate** compares two quantities that have **different units**. Examples: ₱45 per kilogram, 60 kilometers per hour, 240 words in 4 minutes.\n\nA **ratio** compares quantities that have the same unit, like 3 boys to 5 girls. A rate has two different units, like pesos and kilograms."
+          ),
+          text(
+            "Uses of rates",
+            "Rates are used to describe and compare things in everyday life:\n\n- **Speed**: kilometers per hour.\n- **Price**: pesos per kilogram or per liter.\n- **Pay**: pesos per hour.\n- **Fuel use**: kilometers per liter."
           ),
           checkpoint(
             "Checkpoint: Which is a rate?",
@@ -928,14 +1236,43 @@ const SPECS: LessonSpec[] = [
             "5 kilometers per hour",
             "A rate compares quantities with different units (kilometers and hours). The others compare quantities with the same unit."
           ),
+          checkpoint(
+            "Checkpoint: A use of rates",
+            "Which situation uses a rate?",
+            [
+              "Counting the students in a room",
+              "Saying a tricycle travels 30 kilometers per hour",
+              "Naming a polygon",
+              "Measuring one angle",
+            ],
+            "Saying a tricycle travels 30 kilometers per hour",
+            "Kilometers per hour compares distance with time, which are different units, so it is a rate (a speed)."
+          ),
+          summary(
+            "Lesson summary",
+            "- A rate compares two quantities with different units.\n- A ratio compares quantities with the same unit.\n- Rates are used for speed, price, pay and fuel use."
+          ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w6_l2",
+    termNumber: 1,
+    unitTitle: PERCENT,
+    sequenceOrder: 8,
+    title: "Week 6 · Express a rate as a unit rate",
+    description: "Write a rate as a unit rate and use it to compare.",
+    learningObjectives: ["Express a rate as a unit rate", "Compare two rates using unit rates"],
+    documents: [LE6],
+    videos: [],
+    days: [
       {
-        focus: "Unit rates and their uses",
+        focus: "Unit rates",
         blocks: [
           text(
             "Unit rate",
-            "A **unit rate** is a rate whose second quantity is 1, such as ₱40 per 1 kilogram. To find a unit rate, divide the first quantity by the second.\n\nUnit rates make it easy to compare. They are used to compare prices, pay per hour, fuel use, typing speed, and more."
+            "A **unit rate** is a rate whose second quantity is 1, such as ₱40 per 1 kilogram. To find a unit rate, divide the first quantity by the second.\n\nUnit rates make it easy to compare."
           ),
           example(
             "Worked example: Unit rate",
@@ -972,8 +1309,25 @@ const SPECS: LessonSpec[] = [
             "The 3-liter bottle is cheaper per liter (₱40 per liter)",
             "90 ÷ 2 = ₱45 per liter, and 120 ÷ 3 = ₱40 per liter. The smaller unit rate is the better buy."
           ),
+          summary(
+            "Lesson summary",
+            "- A unit rate is a rate per 1 unit: divide the first quantity by the second.\n- Compare prices by finding unit rates; the smaller unit price is the better buy."
+          ),
         ],
       },
+    ],
+  },
+  {
+    id: "lsn_g7q1_w6_l3",
+    termNumber: 1,
+    unitTitle: PERCENT,
+    sequenceOrder: 9,
+    title: "Week 6 · Solve problems involving rates",
+    description: "Solve rate problems, such as speed, distance and time, pay and fuel use.",
+    learningObjectives: ["Solve problems involving rates, such as speed"],
+    documents: [LE6],
+    videos: [],
+    days: [
       {
         focus: "Speed, distance and time",
         blocks: [
@@ -1010,8 +1364,12 @@ const SPECS: LessonSpec[] = [
         ],
       },
       {
-        focus: "Word problems with rates",
+        focus: "Other rate problems",
         blocks: [
+          text(
+            "Find the unit rate first",
+            "To solve a rate problem, find the unit rate, then multiply it by the amount you need."
+          ),
           example(
             "Worked example: Pay rate",
             "A tutor earns ₱350 for 2 hours of tutoring. At the same rate, how much will the tutor earn in 5 hours?",
@@ -1040,7 +1398,7 @@ const SPECS: LessonSpec[] = [
           ),
           summary(
             "Lesson summary",
-            "- A rate compares two quantities with different units.\n- A unit rate is a rate per 1 unit: divide the first quantity by the second.\n- Speed = distance ÷ time, so distance = speed × time and time = distance ÷ speed.\n- Compare prices by finding unit rates; the smaller unit price is the better buy.\n- To solve a rate problem, find the unit rate first, then multiply."
+            "- Speed = distance ÷ time, so distance = speed × time and time = distance ÷ speed.\n- To solve a rate problem, find the unit rate first, then multiply."
           ),
         ],
       },
