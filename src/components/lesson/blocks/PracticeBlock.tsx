@@ -76,7 +76,7 @@ export function PracticeBlock({
         </div>
         <div>
           <span className="text-slate-400 block text-[10px] uppercase font-bold">Standard:</span>
-          <span className="font-semibold text-teal-700">DepEd MATATAG (Phase 6 Engine)</span>
+          <span className="font-semibold text-teal-700">DepEd MATATAG</span>
         </div>
       </div>
 

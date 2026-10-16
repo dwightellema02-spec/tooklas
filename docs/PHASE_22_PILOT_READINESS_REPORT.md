@@ -13,7 +13,9 @@ IMPLEMENTED:
 2. Twenty original DRAFT lessons for Term 1 Weeks 1-7, one per sub-topic (a week is several class days, so a
    week is not one lesson), limited to the Budget of Work and the exemplars. Multi-day lessons have Day sections.
    24 Math Isip videos are attached to the lessons they match (Weeks 1-7); the DepEd PDFs are teacher-only. Week 7 has no exemplar, so it follows the Budget of Work competency only.
-3. Checkpoints and questions are graded on the server. Answer keys and teacher-document text are never sent
+3. A practice question bank for mastery: 360 questions (20 skills x 18) in 60 practice sets plus 7 weekly quizzes, checked by
+   code before writing; wrong choices carry hints for the mistake they stand for; students never receive answers or hints in advance.
+   Checkpoints and questions are graded on the server. Answer keys and teacher-document text are never sent
    to students or visitors. `/api/curriculum` and `/api/lessons` show visitors and students published lessons only.
 4. Client route guard; production Content-Security-Policy; 1 MB body limit (30 MB only for signed-in staff
    uploads); AI settings and health details restricted.

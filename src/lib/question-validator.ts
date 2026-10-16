@@ -105,11 +105,21 @@ export class QuestionValidator {
     const defaultCorrectFeedback = "Correct! Well done.";
     const defaultIncorrectFeedback = "Not quite. Check your steps and try again.";
 
+    // A wrong multiple-choice answer can carry its own hint, written for the mistake that choice stands for.
+    let choiceFeedback = "";
+    if (!isCorrect && config.type === "MULTIPLE_CHOICE" && data.feedbackByChoice && typeof data.feedbackByChoice === "object") {
+      const submitted = String(studentAnswer ?? "").trim().toLowerCase();
+      const picked = (Array.isArray(data.choices) ? data.choices : []).find(
+        (c: any) => String(c.id ?? "").toLowerCase() === submitted || String(c.text ?? "").trim().toLowerCase() === submitted
+      );
+      if (picked && typeof data.feedbackByChoice[picked.id] === "string") choiceFeedback = data.feedbackByChoice[picked.id];
+    }
+
     return {
       isCorrect,
       feedback: isCorrect
         ? config.correctFeedback || defaultCorrectFeedback
-        : config.incorrectFeedback || defaultIncorrectFeedback,
+        : choiceFeedback || config.incorrectFeedback || defaultIncorrectFeedback,
       explanation: config.explanation || undefined,
       expectedAnswerDisplay: expectedDisplay,
     };
@@ -400,6 +410,8 @@ export class QuestionValidator {
     const sanitizedData = { ...qData };
     delete sanitizedData.correctAnswer;
     delete sanitizedData.acceptableAnswers;
+    // Per-choice hints name the wrong choices (so the missing one is the answer); they are shown only after an attempt.
+    delete sanitizedData.feedbackByChoice;
 
     // For matching, provide left and shuffled rights without mapping
     if (Array.isArray(sanitizedData.matchingPairs)) {
@@ -428,6 +440,9 @@ export class QuestionValidator {
 
     cloned.questionData = JSON.stringify(sanitizedData);
     delete cloned.explanation;
+    // The feedback texts often restate the answer; the server returns them with the result of an attempt.
+    delete cloned.correctFeedback;
+    delete cloned.incorrectFeedback;
     return cloned;
   }
 }

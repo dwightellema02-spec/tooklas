@@ -207,6 +207,14 @@ function curriculumForUser(subjects: any[], session: SessionPayload | null) {
   }));
 }
 
+// Practice sets that belong to a lesson are only open to students once that lesson is published.
+async function practiceSetOpenToStudents(ps: { status?: string; lessonId?: string | null }): Promise<boolean> {
+  if (ps.status !== "PUBLISHED") return false;
+  if (!ps.lessonId) return true;
+  const lesson: any = await dbService.getLessonById(ps.lessonId);
+  return !!lesson && lesson.status === "PUBLISHED";
+}
+
 // Helper to extract session from Cookie or Bearer header
 function getSessionFromRequest(req: Request): SessionPayload | null {
   const cookieHeader = req.headers.cookie;
@@ -1695,6 +1703,10 @@ app.get("/api/practice-sets", async (req: Request, res: Response) => {
       status: effectiveStatus,
     });
 
+    if (!isStaff) {
+      const open = await Promise.all((practiceSets as any[]).map((ps) => practiceSetOpenToStudents(ps)));
+      return res.json({ data: (practiceSets as any[]).filter((_, i) => open[i]) });
+    }
     return res.json({ data: practiceSets });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to fetch practice sets";
@@ -1747,7 +1759,7 @@ app.get("/api/practice-sets/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Practice set not found" });
     }
 
-    if (!isStaff && ps.status !== "PUBLISHED") {
+    if (!isStaff && !(await practiceSetOpenToStudents(ps))) {
       return res.status(404).json({ error: "Practice set is not published" });
     }
 
@@ -1814,6 +1826,13 @@ app.post("/api/practice/start", async (req: Request, res: Response) => {
 
     if (!practiceSetId) {
       return res.status(400).json({ error: "practiceSetId is required" });
+    }
+
+    if (session.role === "STUDENT") {
+      const ps: any = await dbService.getPracticeSetById(practiceSetId, true);
+      if (!ps || !(await practiceSetOpenToStudents(ps))) {
+        return res.status(404).json({ error: "Practice set not found or not published yet." });
+      }
     }
 
     const practiceSession = await dbService.startPracticeSession(studentId, practiceSetId);

@@ -47,8 +47,14 @@ Set these in the host's dashboard. Never commit real values.
    ```
    On a new database it also creates Mathematics, Grade 7 and Terms 1 to 3. The 20 Term 1 lessons (Weeks 1 to 7, one lesson per sub-topic) arrive as DRAFT, with their supporting videos and teacher-reference PDFs. Re-running it later adds new videos and lessons without touching lessons a teacher has already moved forward. A teacher reviews them, sends them to review, an administrator
    approves, and then they are published. Students never see drafts.
-5. **Rotate the Gemini key** if it has ever been in a shared file or chat, and set a quota alert.
-6. **Review the privacy side.** The site stores student names, emails and learning records. Add the
+5. **Load the skills and the practice question bank** (check it first with `--validate`, then a dry run, then `--apply`):
+   ```bash
+   npx tsx scripts/seed-q1-question-bank.ts --validate
+   npx tsx scripts/seed-q1-question-bank.ts --apply
+   ```
+   It adds, for each of the 20 lessons, one skill, 18 questions in three practice sets (guided, mixed, challenge), and a quiz for each week. Questions are checked by code before they are written, and practice sets stay hidden from students until their lesson is published. Re-running it never overwrites a teacher's edits.
+6. **Rotate the Gemini key** if it has ever been in a shared file or chat, and set a quota alert.
+7. **Review the privacy side.** The site stores student names, emails and learning records. Add the
    school's privacy notice and parent or guardian consent process before real students sign up
    (Data Privacy Act of 2012). The DepEd Lesson Exemplars say they are for teacher use, so the PDFs are
    stored as teacher-only reference documents and their text is never sent to students.
