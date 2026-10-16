@@ -9,6 +9,7 @@ import {
   Sparkles,
   LogOut,
   ArrowLeft,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -59,6 +60,19 @@ export function TeacherNav({ currentTab, onNavigate, onAskAI }: TeacherNavProps)
 
           {/* Right Actions: AI Assistant & Sign Out */}
           <div className="flex items-center gap-2 shrink-0">
+            {user?.role === "ADMIN" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onNavigate("/admin")}
+                className="gap-1.5 text-xs text-purple-700 bg-purple-50/80 border-purple-200 hover:bg-purple-100 h-8"
+              >
+                <Shield className="w-3.5 h-3.5 text-purple-600" />
+                <span className="hidden sm:inline">Admin Portal</span>
+                <span className="sm:hidden">Admin</span>
+              </Button>
+            )}
+
             {onAskAI && (
               <Button
                 variant="outline"

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { authFetch } from "@/lib/auth/auth-context";
+import { useAuth, authFetch } from "@/lib/auth/auth-context";
 import { TeacherNav } from "@/components/teacher/TeacherNav";
 import { Button } from "@/components/ui/Button";
 import {
@@ -40,6 +40,7 @@ interface TeacherResearchPageProps {
 }
 
 export default function TeacherResearchPage({ onNavigate }: TeacherResearchPageProps) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,8 +114,25 @@ export default function TeacherResearchPage({ onNavigate }: TeacherResearchPageP
     loadResearchData();
   }, [selectedStudentId, selectedClassroomId, selectedGrade]);
 
-  const handleExportCsv = (endpoint: string, filename: string) => {
-    window.open(endpoint, "_blank");
+  const handleExportCsv = async (endpoint: string, filename: string) => {
+    try {
+      const res = await authFetch(endpoint);
+      if (!res.ok) {
+        throw new Error(`Export failed (${res.status} ${res.statusText})`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.warn("Direct blob download failed, falling back to window.open:", err);
+      window.open(endpoint, "_blank");
+    }
   };
 
   const getLevelTextClass = (level: string) => {
@@ -147,6 +165,14 @@ export default function TeacherResearchPage({ onNavigate }: TeacherResearchPageP
               <span className="font-medium text-slate-500">
                 Version: RESEARCH_V1
               </span>
+              {user?.role === "ADMIN" && (
+                <>
+                  <span aria-hidden="true" className="text-slate-300">·</span>
+                  <span className="font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                    Administrator Mode
+                  </span>
+                </>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
               Assessment & Research Analytics
@@ -158,6 +184,17 @@ export default function TeacherResearchPage({ onNavigate }: TeacherResearchPageP
 
           {/* Export Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {user?.role === "ADMIN" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleNav("/admin")}
+                className="gap-1.5 text-xs text-purple-700 border-purple-300 bg-purple-50/60 hover:bg-purple-100"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Admin Dashboard</span>
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

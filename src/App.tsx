@@ -81,9 +81,10 @@ export default function App() {
     if (normalized === "/teacher/practice") return <TeacherPracticeSetsPage onNavigate={navigate} />;
     if (normalized === "/teacher/students") return <TeacherStudentsPage onNavigate={navigate} />;
     if (normalized === "/teacher/classes") return <TeacherClassesPage onNavigate={navigate} />;
-    if (normalized === "/teacher/research") return <TeacherResearchPage onNavigate={navigate} />;
+    if (normalized === "/teacher/research" || normalized === "/admin/research") return <TeacherResearchPage onNavigate={navigate} />;
     if (normalized === "/teacher/ai-settings") return <TeacherAISettingsPage onNavigate={navigate} />;
     if (normalized === "/voice-lab") return <VoiceLabPage onNavigate={navigate} />;
+    if (normalized === "/admin/curriculum") return <TeacherCurriculumPage onNavigate={navigate} />;
     if (normalized === "/admin") return <AdminPage onNavigate={navigate} />;
 
     // Dynamic Route: /student/practice/:practiceSetId

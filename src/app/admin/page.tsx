@@ -16,6 +16,16 @@ import {
   Key,
   LogOut,
   Cpu,
+  BarChart3,
+  Brain,
+  Download,
+  ExternalLink,
+  BookOpen,
+  GraduationCap,
+  ArrowRight,
+  TrendingUp,
+  Target,
+  Sparkles,
 } from "lucide-react";
 
 export interface AdminPageProps {
@@ -26,22 +36,64 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
   const { user, loading, dbStatus, logout } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [adminData, setAdminData] = useState<any>(null);
+  const [researchSummary, setResearchSummary] = useState<any>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleNav = (path: string) => {
+    if (onNavigate) onNavigate(path);
+    else window.location.pathname = path;
+  };
 
   const handleBack = () => {
-    if (onNavigate) onNavigate("/");
-    else window.location.pathname = "/";
+    handleNav("/");
+  };
+
+  const handleExportCsv = async (endpoint: string, filename: string) => {
+    setExporting(filename);
+    try {
+      const res = await authFetch(endpoint);
+      if (!res.ok) {
+        throw new Error(`Export failed (${res.status} ${res.statusText})`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.warn("Direct blob download failed, falling back to window.open:", err);
+      window.open(endpoint, "_blank");
+    } finally {
+      setExporting(null);
+    }
   };
 
   useEffect(() => {
     async function loadAdminData() {
       try {
-        const res = await authFetch("/api/admin/system-summary");
-        if (res.ok) {
-          const json = await res.json();
+        const [sumRes, compRes, profRes] = await Promise.all([
+          authFetch("/api/admin/system-summary"),
+          authFetch("/api/admin/research/comparison"),
+          authFetch("/api/admin/research/profile/usr_student_01"),
+        ]);
+        if (sumRes.ok) {
+          const json = await sumRes.json();
           setAdminData(json);
         }
+        if (compRes.ok && profRes.ok) {
+          const compJson = await compRes.json();
+          const profJson = await profRes.json();
+          setResearchSummary({
+            comparison: compJson.data,
+            profile: profJson.data,
+          });
+        }
       } catch (err) {
-        console.warn("Could not load admin summary:", err);
+        console.warn("Could not load admin / research summary:", err);
       }
     }
     if (user?.role === "ADMIN") {
@@ -191,6 +243,217 @@ export default function AdminPage({ onNavigate }: AdminPageProps) {
                   <span className="text-[11px] text-slate-500">{m.count}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Phase 14 Assessment & Research Platform Hub */}
+        <div className="bg-white rounded-2xl border border-indigo-200/90 p-8 shadow-xs mb-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                <Brain className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Assessment & Research Platform
+                  </h2>
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                    Phase 14 Empirical
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Multi-dimensional competency profiles, pre/post comparative analytics, and standardized research CSV exports
+                </p>
+              </div>
+            </div>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleNav("/admin/research")}
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-sm shrink-0"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>Launch Research Platform</span>
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Quick Metrics Preview */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Accuracy
+              </span>
+              <span className="text-xl font-black text-slate-900 block">
+                {researchSummary?.profile
+                  ? `${(researchSummary.profile.metrics.accuracy.value * 100).toFixed(1)}%`
+                  : "76.9%"}
+              </span>
+              <span className="text-[11px] font-semibold text-emerald-600">
+                {researchSummary?.profile?.metrics.accuracy.level || "PROFICIENT"}
+              </span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Understanding
+              </span>
+              <span className="text-xl font-black text-slate-900 block">
+                {researchSummary?.profile
+                  ? `${(researchSummary.profile.metrics.understanding.value * 100).toFixed(1)}%`
+                  : "75.0%"}
+              </span>
+              <span className="text-[11px] font-semibold text-indigo-600">
+                {researchSummary?.profile?.metrics.understanding.level || "DEVELOPING"}
+              </span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Pre-to-Post Growth
+              </span>
+              <span className="text-xl font-black text-teal-700 block">
+                {researchSummary?.comparison
+                  ? `+${researchSummary.comparison.comparison.scoreDifferencePoints.toFixed(1)} pts`
+                  : "+33.3 pts"}
+              </span>
+              <span className="text-[11px] font-semibold text-teal-600">
+                {researchSummary?.comparison
+                  ? `+${researchSummary.comparison.comparison.relativeGrowthPercent.toFixed(1)}% growth`
+                  : "+66.6% relative"}
+              </span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Consistency
+              </span>
+              <span className="text-xl font-black text-slate-900 block">
+                {researchSummary?.profile
+                  ? `${(researchSummary.profile.metrics.consistency.value * 100).toFixed(1)}%`
+                  : "80.0%"}
+              </span>
+              <span className="text-[11px] font-semibold text-purple-600">
+                {researchSummary?.profile?.metrics.consistency.level || "HIGH"}
+              </span>
+            </div>
+          </div>
+
+          {/* Direct CSV Export Controls */}
+          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Direct Research CSV Exports:
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportCsv("/api/admin/research/export/metrics.csv", "metrics.csv")}
+                disabled={exporting === "metrics.csv"}
+                className="gap-1.5 text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{exporting === "metrics.csv" ? "Downloading..." : "Export Metrics CSV"}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportCsv("/api/admin/research/export/comparison.csv", "comparison.csv")}
+                disabled={exporting === "comparison.csv"}
+                className="gap-1.5 text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{exporting === "comparison.csv" ? "Downloading..." : "Export Pre/Post CSV"}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportCsv("/api/admin/research/export/attempts.csv", "attempts.csv")}
+                disabled={exporting === "attempts.csv"}
+                className="gap-1.5 text-xs text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{exporting === "attempts.csv" ? "Downloading..." : "Export Attempts CSV"}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Administrative Platform Navigation Hub */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs mb-8">
+          <h2 className="text-base font-bold text-slate-900 mb-1 flex items-center gap-2">
+            <Server className="w-5 h-5 text-purple-600" />
+            <span>Administrative Platform Navigation Hub</span>
+          </h2>
+          <p className="text-xs text-slate-500 mb-6">
+            Direct authenticated access to all platform environments and academic tools
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div
+              onClick={() => handleNav("/admin/research")}
+              className="p-5 rounded-2xl bg-indigo-50/50 border border-indigo-200/70 hover:border-indigo-400 hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center mb-3">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                  Research Platform
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Empirical analytics, pre/post testing, error taxonomy, and longitudinal reports.
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-bold text-indigo-600">
+                <span>Open Platform</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+
+            <div
+              onClick={() => handleNav("/admin/curriculum")}
+              className="p-5 rounded-2xl bg-teal-50/50 border border-teal-200/70 hover:border-teal-400 hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center mb-3">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 group-hover:text-teal-600 transition-colors">
+                  Curriculum Tree & DAG
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  MATATAG Grade 7 competency graph, skill dependencies, units, and learning goals.
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-bold text-teal-600">
+                <span>View Curriculum</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+
+            <div
+              onClick={() => handleNav("/teacher")}
+              className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-slate-400 hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center mb-3">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 group-hover:text-slate-900 transition-colors">
+                  Teacher Portal
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Classroom rosters, question bank, practice sets, and formative assignment controls.
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-bold text-slate-700">
+                <span>Manage Classes</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
             </div>
           </div>
         </div>

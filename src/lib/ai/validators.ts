@@ -109,6 +109,11 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
         return generateFallbackTutorResponse(context);
       }
 
+      // If English was requested, verify that the message is in English; if it is Filipino, use localized fallback
+      if (context.requestedLanguage === "en" && isFilipinoText(message)) {
+        return generateFallbackTutorResponse(context);
+      }
+
       return {
         responseType,
         message,
@@ -126,7 +131,10 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
     const messageMatch = rawText.match(/["']message["']\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
     if (messageMatch && messageMatch[1] && messageMatch[1].trim().length > 5) {
       const extractedMessage = sanitizeMessage(messageMatch[1].replace(/\\"/g, '"').trim());
-      if (context.requestedLanguage !== "fil" || isFilipinoText(extractedMessage)) {
+      if (
+        (context.requestedLanguage === "fil" && isFilipinoText(extractedMessage)) ||
+        (context.requestedLanguage === "en" && !isFilipinoText(extractedMessage))
+      ) {
         return {
           responseType: "HINT",
           message: extractedMessage,
@@ -139,7 +147,10 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
     // JSON parsing failed; only use rawText if it looks like genuine student-facing natural language
     const isSchemaEcho = /responseType|JSON output|guidingQuestion|hintLevel|sourceGrounding/i.test(rawText);
     if (rawText.length > 10 && rawText.length < 1500 && !rawText.includes("{") && !rawText.includes("```") && !isSchemaEcho) {
-      if (context.requestedLanguage !== "fil" || isFilipinoText(rawText)) {
+      if (
+        (context.requestedLanguage === "fil" && isFilipinoText(rawText)) ||
+        (context.requestedLanguage === "en" && !isFilipinoText(rawText))
+      ) {
         return {
           responseType: "HINT",
           message: sanitizeMessage(rawText.trim()),

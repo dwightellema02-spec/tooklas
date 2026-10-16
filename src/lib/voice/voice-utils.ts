@@ -183,13 +183,19 @@ export function formatTextForSpeech(text: string): string {
   cleaned = cleaned.replace(/\\pi/g, " pi ");
   cleaned = cleaned.replace(/\\sqrt\{([^}]+)\}/g, "square root of $1");
 
-  // Format negative numbers: (-5) -> negative 5 or negatibo 5
+  // Normalize Unicode minuses (\u2212) and dashes (\u2013, \u2014) to standard minus
+  cleaned = cleaned.replace(/[\u2212\u2013\u2014]/g, "-");
+
+  // Format subtraction between two numbers: 10 - 4 -> 10 minus 4 (standard MATATAG phrasing)
+  cleaned = cleaned.replace(/(\d+)\s*-\s*(\d+)/g, "$1 minus $2");
+
+  // Format negative numbers: (-5), -4.5 -> negative 5 or negatibo 5 (avoiding hyphenated words like LSN-01)
   if (isFilipino) {
-    cleaned = cleaned.replace(/\(\s*-\s*(\d+)\s*\)/g, "negatibo $1");
-    cleaned = cleaned.replace(/-\s*(\d+)/g, "negatibo $1");
+    cleaned = cleaned.replace(/\(\s*-\s*(\d+(?:\.\d+)?)\s*\)/g, "negatibo $1");
+    cleaned = cleaned.replace(/(^|[^0-9a-zA-Z_])-\s*(\d+(?:\.\d+)?)/g, "$1negatibo $2");
   } else {
-    cleaned = cleaned.replace(/\(\s*-\s*(\d+)\s*\)/g, "negative $1");
-    cleaned = cleaned.replace(/-\s*(\d+)/g, "negative $1");
+    cleaned = cleaned.replace(/\(\s*-\s*(\d+(?:\.\d+)?)\s*\)/g, "negative $1");
+    cleaned = cleaned.replace(/(^|[^0-9a-zA-Z_])-\s*(\d+(?:\.\d+)?)/g, "$1negative $2");
   }
 
   // Remove remaining KaTeX dollar delimiters and backslashes
@@ -209,6 +215,11 @@ export function isFilipinoText(text: string): boolean {
   if (!text || typeof text !== "string") return false;
   const lower = text.toLowerCase();
 
+  // If text has significant English function words, avoid false positive tagging
+  const englishCommonWords =
+    /\b(the|is|are|you|your|we|our|can|could|would|should|please|remember|that|which|there|their|what|when|where|how|why|let's|with|have|has|this|these|those)\b/gi;
+  const englishMatches = (lower.match(englishCommonWords) || []).length;
+
   // Explicit keywords and common Filipino pedagogical terms
   const filipinoKeywords = [
     /\b(tagalog|filipino)\b/i,
@@ -217,7 +228,7 @@ export function isFilipinoText(text: string): boolean {
     /\b(hakbang|himayin|pagsamahin|ibawas|magkasama|dahan-dahan)\b/i,
     /\b(lutasin|subukan|unawain|maintindihan|ipaliwanag|paliwanag|sabihin|sagot)\b/i,
     /\b(ano|bakit|paano|kailan|saan|sino|alin|magkano)\b/i,
-    /\b(natin|ninyo|tayo|sila|ako|ikaw|siya)\b/i,
+    /\b(natin|ninyo|tayo|sila|ako|ikaw|siya|atin|ating|amin|aming|inyo|inyong|kanila|kanilang|akin|aking|iyo|iyong)\b/i,
     /\b(dahil|kung|kapag|kaya|kasi|subalit|ngunit|naman|pala|talaga)\b/i,
     /\b(pareho|magkaiba|tiyak|malapit|malaki|maliit|katumbas|buo|buong)\b/i,
   ];
@@ -227,7 +238,12 @@ export function isFilipinoText(text: string): boolean {
     if (regex.test(lower)) matches++;
   }
 
-  const particles = /\b(ang|ng|sa|mga|ay|na|at|ito|iyon|ba)\b/i;
+  // Exclusive Filipino grammatical particles (excluding English homographs like "at")
+  const particles = /\b(ang|ng|sa|nasa|mga|ay|na|ito|iyon|nito|niyan|dito|doon|ba|naman|pala)\b/i;
+
+  if (englishMatches >= 3 && matches < 2) {
+    return false;
+  }
 
   return matches >= 2 || (matches >= 1 && particles.test(lower));
 }

@@ -33,7 +33,7 @@ export const ROLE_PERMISSIONS: Record<
     canAccessAdmin: true,
   },
   RESEARCHER: {
-    allowedRoutes: ["/", "/student", "/admin"],
+    allowedRoutes: ["/", "/student", "/admin", "/teacher"],
     canManageCurriculum: false,
     canReviewStudents: true,
     canAccessAdmin: false,

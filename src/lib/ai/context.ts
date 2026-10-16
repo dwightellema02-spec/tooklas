@@ -405,21 +405,21 @@ export function detectLanguagePreference(
 ): "fil" | "en" {
   const query = (studentQuery || "").trim().toLowerCase();
 
-  // Explicit English requests take immediate precedence
-  if (
-    /\b(in english|english please|speak english|explain in english|use english|mag-english)\b/i.test(query)
-  ) {
+  // 1. Explicit English requests take immediate precedence
+  const explicitEnglishRegex =
+    /\b(english|in english|english please|please english|speak english|explain in english|use english|mag-?english|switch to english|back to english|can you speak english|can we speak english|change to english|ingles|sa ingles)\b/i;
+  if (query === "english" || explicitEnglishRegex.test(query)) {
     return "en";
   }
 
-  // Explicit Tagalog / Filipino requests
+  // 2. Explicit Tagalog / Filipino requests
   const explicitFilipinoRegex =
-    /\b(tagalog|filipino|sa tagalog|in tagalog|paliwanag sa tagalog|ipaliwanag sa tagalog|mag-tagalog|tagalugin|salitang tagalog|sa filipino|in filipino|paliwanag sa filipino|ipaliwanag sa filipino)\b/i;
-  if (explicitFilipinoRegex.test(query)) {
+    /\b(tagalog|filipino|sa tagalog|in tagalog|paliwanag sa tagalog|ipaliwanag sa tagalog|mag-?tagalog|tagalugin|salitang tagalog|sa filipino|in filipino|paliwanag sa filipino|ipaliwanag sa filipino|mag-?filipino)\b/i;
+  if (query === "tagalog" || query === "filipino" || explicitFilipinoRegex.test(query)) {
     return "fil";
   }
 
-  // Common Filipino conversational words / grammatical particles
+  // 3. Common Filipino conversational words / grammatical particles
   const filipinoMarkers = [
     /\b(ano|bakit|paano|kailan|saan|sino|alin|magkano)\b/i,
     /\b(natin|ninyo|kayo|tayo|sila|ako|ikaw|siya)\b/i,
@@ -434,26 +434,38 @@ export function detectLanguagePreference(
       markerMatches++;
     }
   }
-  if (markerMatches >= 1 && (/\b(ang|ng|sa|mga|ay|na|at|ito|iyon)\b/i.test(query) || markerMatches >= 2)) {
+  if (markerMatches >= 1 && (/\b(ang|ng|sa|mga|ay|na|ito|iyon|ba)\b/i.test(query) || markerMatches >= 2)) {
     return "fil";
   }
 
   // 4. If query is clearly composed in English, preserve English
   const englishSentenceMarkers =
-    /\b(what|how|why|when|where|which|who|can|could|would|please|give|tell|help|hint|rule|concept|explain|problem|integers?|numbers?|positive|negative|step|first|next|think)\b/i;
+    /\b(what|how|why|when|where|which|who|can|could|would|please|give|tell|help|hint|rule|concept|explain|problem|integers?|numbers?|positive|negative|step|first|next|think|understand|confused|show|solve|wrong|correct|is|are|does|don't|dont|i|you|we)\b/i;
   if (query && englishSentenceMarkers.test(query)) {
     return "en";
   }
 
-  // 5. Conversational continuity for short/ambiguous queries (e.g. "bakit", "next", "-5"):
+  // 5. Conversational continuity for short/ambiguous queries (e.g. "-5", "hint", "next", "12"):
+  // CRITICAL FIX: Only inspect previous STUDENT messages, never the TUTOR's curriculum text!
+  // Inspecting the tutor's messages would trap the conversation in Filipino because the tutor's math words
+  // ("positibo", "negatibo", "tuntunin") would trigger Filipino continuity forever.
   if (recentMessages && recentMessages.length > 0) {
-    const lastTutorOrStudentMsg = recentMessages.slice(-3);
-    for (const msg of lastTutorOrStudentMsg) {
-      if (explicitFilipinoRegex.test(msg.content.toLowerCase())) {
+    const studentMessages = recentMessages.filter((m) => m.role === "STUDENT").slice(-3);
+    for (let i = studentMessages.length - 1; i >= 0; i--) {
+      const prevStudentQuery = studentMessages[i].content.trim().toLowerCase();
+      if (prevStudentQuery === "english" || explicitEnglishRegex.test(prevStudentQuery)) {
+        return "en";
+      }
+      if (prevStudentQuery === "tagalog" || prevStudentQuery === "filipino" || explicitFilipinoRegex.test(prevStudentQuery)) {
         return "fil";
       }
-      if (/\b(tuntunin|kabaligtaran|positibo|negatibo|mag-usap tayo|ating aralin|hakbang|subukan)\b/i.test(msg.content)) {
-        return "fil";
+      for (const marker of filipinoMarkers) {
+        if (marker.test(prevStudentQuery)) {
+          return "fil";
+        }
+      }
+      if (englishSentenceMarkers.test(prevStudentQuery)) {
+        return "en";
       }
     }
   }

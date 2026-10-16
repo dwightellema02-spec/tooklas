@@ -69,6 +69,7 @@ export function AITutorPanel({
   const [voiceError, setVoiceError] = useState<VoiceError | null>(null);
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [voiceLang, setVoiceLang] = useState<"fil-PH" | "en-PH">("fil-PH");
 
   const isVoiceSupported = isSpeechRecognitionSupported();
   const isTtsSupported = isSpeechSynthesisSupported();
@@ -138,8 +139,9 @@ export function AITutorPanel({
             setCurrentHintLevel(json.data.message.hintLevel);
           }
 
-          // If voice mode triggered or auto-speak enabled, speak the answer aloud
-          if ((isVoiceTriggered || autoSpeakRef.current) && isTtsSupported && synthesisRef.current) {
+          // If voice mode triggered or auto-speak enabled, speak the answer aloud ONLY if not currently listening
+          const isCurrentlyListening = recognitionRef.current?.isListening();
+          if ((isVoiceTriggered || autoSpeakRef.current) && isTtsSupported && synthesisRef.current && !isCurrentlyListening) {
             setSpeakingMessageId(json.data.message.id);
             setVoiceState("SPEAKING");
             const isFil = isFilipinoText(json.data.message.content);
@@ -147,13 +149,13 @@ export function AITutorPanel({
               lang: isFil ? "fil-PH" : "en-US",
             });
           } else {
-            setVoiceState("IDLE");
+            setVoiceState((prev: VoiceState) => (prev === "PROCESSING" ? "IDLE" : prev));
           }
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "The AI Tutor is temporarily unavailable.";
         setError(msg);
-        setVoiceState("IDLE");
+        setVoiceState((prev: VoiceState) => (prev === "PROCESSING" ? "IDLE" : prev));
       } finally {
         setLoading(false);
       }
@@ -161,40 +163,57 @@ export function AITutorPanel({
     [conversationId, context, isTtsSupported, loading]
   );
 
-  // Initialize Speech Controllers with lifecycle management
+  // Stable callback refs so SpeechRecognition is NOT recreated/aborted on every re-render
+  const recognitionCallbacksRef = useRef<{
+    onRequestingPermission?: () => void;
+    onStart?: () => void;
+    onResult?: (result: VoiceTranscriptResult) => void;
+    onError?: (error: VoiceError) => void;
+    onEnd?: () => void;
+  }>({});
+
+  recognitionCallbacksRef.current = {
+    onRequestingPermission: () => {
+      setVoiceState("REQUESTING_PERMISSION");
+      setVoiceError(null);
+    },
+    onStart: () => {
+      setVoiceState("LISTENING");
+      setVoiceError(null);
+      setInterimTranscript("");
+    },
+    onResult: (result: VoiceTranscriptResult) => {
+      console.log("[TUKLAS_MIC_DIAG] TRANSCRIPT_CALLBACK_CALLED", result);
+      if (result.transcript && result.transcript.trim()) {
+        setInputQuery(result.transcript.trim());
+      }
+      if (result.isFinal) {
+        setInterimTranscript("");
+      } else {
+        setInterimTranscript(result.transcript);
+      }
+    },
+    onError: (err: VoiceError) => {
+      setVoiceError(err);
+      setVoiceState("ERROR");
+      setInterimTranscript("");
+    },
+    onEnd: () => {
+      setVoiceState((prev: VoiceState) =>
+        prev === "LISTENING" || prev === "REQUESTING_PERMISSION" ? "IDLE" : prev
+      );
+    },
+  };
+
+  // Initialize Speech Controllers once on mount
   useEffect(() => {
     // Initialize Speech Recognition
     const recognition = new SpeechRecognitionController({
-      onRequestingPermission: () => {
-        setVoiceState("REQUESTING_PERMISSION");
-        setVoiceError(null);
-      },
-      onStart: () => {
-        setVoiceState("LISTENING");
-        setVoiceError(null);
-        setInterimTranscript("");
-      },
-      onResult: (result: VoiceTranscriptResult) => {
-        if (result.isFinal) {
-          setInterimTranscript("");
-          setVoiceState("PROCESSING");
-          if (result.transcript.trim()) {
-            requestTutorHelp("LEVEL_1_HINT", result.transcript, true);
-          } else {
-            setVoiceState("IDLE");
-          }
-        } else {
-          setInterimTranscript(result.transcript);
-        }
-      },
-      onError: (err: VoiceError) => {
-        setVoiceError(err);
-        setVoiceState("ERROR");
-        setInterimTranscript("");
-      },
-      onEnd: () => {
-        setVoiceState((prev: VoiceState) => (prev === "LISTENING" || prev === "REQUESTING_PERMISSION" ? "IDLE" : prev));
-      },
+      onRequestingPermission: () => recognitionCallbacksRef.current.onRequestingPermission?.(),
+      onStart: () => recognitionCallbacksRef.current.onStart?.(),
+      onResult: (res) => recognitionCallbacksRef.current.onResult?.(res),
+      onError: (err) => recognitionCallbacksRef.current.onError?.(err),
+      onEnd: () => recognitionCallbacksRef.current.onEnd?.(),
     });
     recognitionRef.current = recognition;
 
@@ -218,7 +237,7 @@ export function AITutorPanel({
       recognition.destroy();
       synthesis.destroy();
     };
-  }, [requestTutorHelp]);
+  }, []); // Run ONCE on mount! NEVER destroy controller on parent re-renders!
 
   // Handle panel close / minimize cleanup
   useEffect(() => {
@@ -231,7 +250,11 @@ export function AITutorPanel({
   }, [isOpen, isMinimized]);
 
   // Voice Interaction Handlers with Task 11 Barge-in support
-  const handleToggleVoice = () => {
+  const handleToggleVoice = async () => {
+    console.log("[TUKLAS_MIC_DIAG] VOICE_HANDLER_ENTERED", { voiceState, hasController: Boolean(recognitionRef.current) });
+    if (recognitionRef.current) {
+      console.log("[TUKLAS_MIC_DIAG] CONTROLLER_AVAILABLE");
+    }
     if (voiceState === "LISTENING" || voiceState === "REQUESTING_PERMISSION") {
       recognitionRef.current?.stop();
       setVoiceState("IDLE");
@@ -241,12 +264,12 @@ export function AITutorPanel({
       setSpeakingMessageId(null);
       setAutoSpeak(true);
       setVoiceError(null);
-      recognitionRef.current?.start({ continuous: false, interimResults: true });
+      await recognitionRef.current?.start({ continuous: true, interimResults: true, lang: voiceLang });
     } else {
       // Intentional student click: activate microphone and auto-speak
       setAutoSpeak(true);
       setVoiceError(null);
-      recognitionRef.current?.start({ continuous: false, interimResults: true });
+      await recognitionRef.current?.start({ continuous: true, interimResults: true, lang: voiceLang });
     }
   };
 
@@ -346,6 +369,8 @@ export function AITutorPanel({
             onStopSpeaking={handleStopSpeaking}
             onRetry={handleToggleVoice}
             onDismissError={() => setVoiceError(null)}
+            voiceLang={voiceLang}
+            onToggleVoiceLang={() => setVoiceLang((prev) => (prev === "fil-PH" ? "en-PH" : "fil-PH"))}
           />
 
           {/* Messages Scroll Area */}
@@ -458,16 +483,8 @@ export function AITutorPanel({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Suggestions Action Pills with Voice Tutor Button */}
+          {/* Quick Suggestions Action Pills */}
           <div className="p-2.5 bg-white border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {/* Phase 19 & 20: Voice Tutor Mic Button */}
-            <VoiceTutorButton
-              voiceState={voiceState}
-              isSupported={isVoiceSupported}
-              onToggleVoice={handleToggleVoice}
-              onStopSpeaking={handleStopSpeaking}
-            />
-
             <button
               disabled={loading}
               onClick={() => requestTutorHelp("LEVEL_1_HINT")}
@@ -505,7 +522,7 @@ export function AITutorPanel({
             </button>
           </div>
 
-          {/* Chat Input */}
+          {/* Chat Input with Integrated Compact Microphone Button */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -515,11 +532,20 @@ export function AITutorPanel({
             }}
             className="p-3 bg-white border-t border-slate-100 flex items-center gap-2"
           >
+            {/* Phase 19 & 21: Compact Microphone Icon Button */}
+            <VoiceTutorButton
+              voiceState={voiceState}
+              isSupported={isVoiceSupported}
+              onToggleVoice={handleToggleVoice}
+              onStopSpeaking={handleStopSpeaking}
+              compact={true}
+            />
+
             <input
               type="text"
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
-              placeholder="Ask a question or tap 'Talk to Tuklas'..."
+              placeholder={voiceState === "LISTENING" ? "Listening to your voice..." : "Ask Tuklas AI a question..."}
               maxLength={1000}
               disabled={loading}
               aria-label="Ask a question to Tuklas AI Tutor"

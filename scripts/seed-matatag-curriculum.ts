@@ -1,71 +1,13 @@
 import { prisma } from "../src/lib/db";
 
-export const MATATAG_GRADE7_TERMS = [
-  {
-    termNumber: 1,
-    name: "Term 1 (Quarter 1)",
-    units: [
-      {
-        sequenceOrder: 1,
-        title: "Numbers and Algebraic Expressions",
-        description: "Foundational number concepts, integers, and operations for Grade 7 MATATAG.",
-      },
-      {
-        sequenceOrder: 2,
-        title: "Rational Numbers and Real Number System",
-        description: "Operations on fractions, decimals, and subset classifications of real numbers.",
-      },
-    ],
-  },
-  {
-    termNumber: 2,
-    name: "Term 2 (Quarter 2)",
-    units: [
-      {
-        sequenceOrder: 1,
-        title: "Measurement and Unit Conversion",
-        description: "Metric and English systems of measurement, dimensional analysis, and scale.",
-      },
-      {
-        sequenceOrder: 2,
-        title: "Geometric Shapes, Angles, and Polygons",
-        description: "Properties of angles, triangles, quadrilaterals, polygons, perimeter, and area.",
-      },
-    ],
-  },
-  {
-    termNumber: 3,
-    name: "Term 3 (Quarter 3)",
-    units: [
-      {
-        sequenceOrder: 1,
-        title: "Algebraic Expressions and Polynomials",
-        description: "Constants, variables, algebraic expressions, and operations on polynomials.",
-      },
-      {
-        sequenceOrder: 2,
-        title: "Linear Equations and Inequalities",
-        description: "Solving one-variable linear equations, inequalities, and real-world mathematical modeling.",
-      },
-    ],
-  },
-  {
-    termNumber: 4,
-    name: "Term 4 (Quarter 4)",
-    units: [
-      {
-        sequenceOrder: 1,
-        title: "Data Collection and Frequency Distributions",
-        description: "Formulating statistical questions, sampling, frequency distribution tables, and graphs.",
-      },
-      {
-        sequenceOrder: 2,
-        title: "Measures of Central Tendency and Probability",
-        description: "Mean, median, mode, variability, and simple theoretical and experimental probability.",
-      },
-    ],
-  },
-];
+import { BOW_GRADE7_TERMS } from "../prisma/g7-bow-curriculum.ts";
+
+// Three-term structure from the DepEd MATATAG Budget of Work (April 2026).
+export const MATATAG_GRADE7_TERMS = BOW_GRADE7_TERMS.map((t) => ({
+  termNumber: t.termNumber,
+  name: `Term ${t.termNumber}`,
+  units: t.units.map((u, i) => ({ sequenceOrder: i + 1, title: u.title, description: u.description })),
+}));
 
 export async function ensureCurriculumStructure() {
   const grade = await prisma.grade.findFirst({ where: { level: 7 } });
@@ -114,7 +56,7 @@ export async function ensureCurriculumStructure() {
     }
   }
 
-  console.log("[MATATAG] Curriculum structure successfully verified and updated across Terms 1-4.");
+  console.log("[MATATAG] Curriculum structure successfully verified and updated across Terms 1-3.");
 }
 
 ensureCurriculumStructure()

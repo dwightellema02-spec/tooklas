@@ -10,10 +10,17 @@ import { fallbackStore } from "../src/lib/db.ts";
 const prisma = new PrismaClient();
 
 export async function seedDatabase() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_PRODUCTION_SEED !== "true") {
+    throw new Error(
+      "Refusing to seed default demo accounts in production environment. Set ALLOW_PRODUCTION_SEED=true and DEMO_SEED_PASSWORD if initial seeding is explicitly intended."
+    );
+  }
+
   console.log("🌱 Starting Tuklas AI Phase 2 database seed...");
 
   // 1. Create Default Role Users (Passwords securely hashed with bcrypt)
-  const defaultPassword = await bcrypt.hash("Tuklas2026!", 10);
+  const rawSeedPassword = process.env.DEMO_SEED_PASSWORD || "Tuklas2026!";
+  const defaultPassword = await bcrypt.hash(rawSeedPassword, 10);
 
   const studentUser = await prisma.user.upsert({
     where: { email: "student@tuklas.ai" },

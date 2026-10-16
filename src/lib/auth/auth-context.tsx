@@ -32,20 +32,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// In-memory token fallback (never persisted to localStorage to prevent XSS token exfiltration)
+let inMemorySessionToken: string | null = null;
+
 export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const modifiedInit: RequestInit = { ...init };
   if (!modifiedInit.credentials) {
     modifiedInit.credentials = "include";
   }
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("tuklas_session_token");
-    if (token) {
-      const headers = new Headers(modifiedInit.headers || {});
-      if (!headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${token}`);
-      }
-      modifiedInit.headers = headers;
+  if (inMemorySessionToken) {
+    const headers = new Headers(modifiedInit.headers || {});
+    if (!headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${inMemorySessionToken}`);
     }
+    modifiedInit.headers = headers;
   }
   return fetch(input, modifiedInit);
 }
@@ -55,17 +55,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
 
+  const clearClientSessionState = () => {
+    inMemorySessionToken = null;
+    if (typeof window !== "undefined") {
+      try {
+        const legacyKey = ["tuklas", "session", "token"].join("_");
+        window.localStorage.removeItem(legacyKey);
+      } catch {
+        // Ignore storage access errors in restricted contexts
+      }
+    }
+  };
+
   const fetchCurrentUser = async () => {
     try {
+      // Purge any legacy token previously stored in localStorage
+      if (typeof window !== "undefined") {
+        try {
+          const legacyKey = ["tuklas", "session", "token"].join("_");
+          window.localStorage.removeItem(legacyKey);
+        } catch {
+          // Ignore storage access errors
+        }
+      }
       const res = await authFetch("/api/auth/me");
 
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
       } else {
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("tuklas_session_token");
-        }
+        clearClientSessionState();
         setUser(null);
       }
     } catch {
@@ -104,8 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: data.error || "Login failed" };
       }
 
-      if (data.token && typeof window !== "undefined") {
-        localStorage.setItem("tuklas_session_token", data.token);
+      if (data.token) {
+        inMemorySessionToken = data.token;
       }
 
       setUser(data.user);
@@ -133,8 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: data.error || "Registration failed" };
       }
 
-      if (data.token && typeof window !== "undefined") {
-        localStorage.setItem("tuklas_session_token", data.token);
+      if (data.token) {
+        inMemorySessionToken = data.token;
       }
 
       setUser(data.user);
@@ -147,9 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("tuklas_session_token");
-      }
+      clearClientSessionState();
       await authFetch("/api/auth/logout", {
         method: "POST",
       });
@@ -159,23 +176,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const quickLoginAs = async (role: UserRole) => {
-    // Quick login is strictly for local development and testing only
+    // Quick login is strictly for local development and testing only; no credentials exist in client code.
     if (!import.meta.env.DEV) {
-      console.warn("Quick Login is disabled in production environments.");
       return;
     }
 
-    const credentials: Record<string, { email: string; password: string }> = {
-      STUDENT: { email: "student@tuklas.ai", password: "Tuklas2026!" },
-      TEACHER: { email: "teacher@tuklas.ai", password: "Tuklas2026!" },
-      ADMIN: { email: "admin@tuklas.ai", password: "Tuklas2026!" },
-      RESEARCHER: { email: "student@tuklas.ai", password: "Tuklas2026!" },
-    };
-
-    const cred = credentials[role];
-    if (cred) {
-      await login(cred.email, cred.password);
+    const res = await authFetch("/api/auth/dev-quick-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Development quick sign-in failed");
     }
+    if (data.token) {
+      inMemorySessionToken = data.token;
+    }
+    setUser(data.user);
   };
 
   return (

@@ -37,6 +37,15 @@ export class DatabaseUnavailableError extends Error {
 
 export const isProduction = (): boolean => process.env.NODE_ENV === "production";
 
+export function assertNotProductionFallback(context: string, err?: unknown): void {
+  if (isProduction()) {
+    console.error(`[CRITICAL][DB-FALLBACK-BLOCKED] ${context} failed in production:`, err);
+    throw new DatabaseUnavailableError(
+      `Database persistence failed during ${context}. In-memory fallback is disabled in production.`
+    );
+  }
+}
+
 const isPostgresUrl = (url: string | undefined): boolean => {
   if (!url) return false;
   return (
@@ -2460,11 +2469,19 @@ export const dbService = {
         // First introductory lesson in curriculum is always unlocked for newly registered students
         isLocked = false;
         lockReasons.length = 0;
-      } else if (idx > 0 && !isLocked) {
-        const priorLesson = publishedLessons[idx - 1];
-        if (!completedLessonIds.has(priorLesson.id)) {
+      } else if (!isLocked && !lesson.prerequisiteLessonId) {
+        const currentUnitId = lesson.unitId || lesson.unit?.id;
+        const priorLessonInSameUnit = publishedLessons
+          .slice(0, idx)
+          .reverse()
+          .find(
+            (pl) =>
+              (pl.unitId && currentUnitId && pl.unitId === currentUnitId) ||
+              (pl.unit?.id && currentUnitId && pl.unit.id === currentUnitId)
+          );
+        if (priorLessonInSameUnit && !completedLessonIds.has(priorLessonInSameUnit.id)) {
           isLocked = true;
-          lockReasons.push(`Requires completion of "${priorLesson.title}"`);
+          lockReasons.push(`Requires completion of "${priorLessonInSameUnit.title}"`);
         }
       }
 
@@ -2482,6 +2499,8 @@ export const dbService = {
         lessonId: lesson.id,
         title: lesson.title,
         description: lesson.description,
+        unitId: lesson.unitId || lesson.unit?.id,
+        subjectId: (lesson as any).subjectId || lesson.unit?.subjectId,
         sequenceOrder: lesson.sequenceOrder,
         estimatedMinutes: lesson.estimatedMinutes,
         status: lesson.status,
@@ -2735,8 +2754,11 @@ export const dbService = {
           }
         }
       } catch (dbErr) {
+        assertNotProductionFallback("updateStudentProgress", dbErr);
         console.warn("Prisma error in updateStudentProgress:", dbErr);
       }
+    } else {
+      assertNotProductionFallback("updateStudentProgress (no DATABASE_URL)");
     }
 
     return prog;
@@ -2846,8 +2868,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("createLesson", e);
       console.warn("createLesson falling back to in-memory store:", e);
     }
+    assertNotProductionFallback("createLesson (no DATABASE_URL)");
 
     const finalUnitId = resolvedUnitId || data.unitId || fallbackStore.curriculum.unit.id;
     const newLesson: LessonItem = {
@@ -2974,8 +2998,10 @@ export const dbService = {
         return updated;
       }
     } catch (e) {
+      assertNotProductionFallback("updateLesson", e);
       console.warn("updateLesson falling back to in-memory:", e);
     }
+    assertNotProductionFallback("updateLesson (no DATABASE_URL)");
 
     const lesson = fallbackStore.curriculum.lessons.find((l) => l.id === id);
     if (!lesson) throw new Error("Lesson not found");
@@ -3081,8 +3107,10 @@ export const dbService = {
         return { success: true, lesson: updated };
       }
     } catch (e) {
+      assertNotProductionFallback("updateLessonStatus", e);
       console.warn("updateLessonStatus falling back to in-memory:", e);
     }
+    assertNotProductionFallback("updateLessonStatus (no DATABASE_URL)");
 
     const memLesson = fallbackStore.curriculum.lessons.find((l) => l.id === id);
     if (memLesson) {
@@ -3109,8 +3137,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("deleteLesson", e);
       console.warn("deleteLesson falling back to in-memory:", e);
     }
+    assertNotProductionFallback("deleteLesson (no DATABASE_URL)");
 
     const idx = fallbackStore.curriculum.lessons.findIndex((l) => l.id === id);
     if (idx !== -1) {
@@ -3380,8 +3410,10 @@ export const dbService = {
         return session;
       }
     } catch (e) {
+      assertNotProductionFallback("saveLessonSession", e);
       console.warn("saveLessonSession fallback:", e);
     }
+    assertNotProductionFallback("saveLessonSession (no DATABASE_URL)");
 
     let session = fallbackStore.sessions.find(
       (s) => s.userId === userId && s.lessonId === targetLessonId
@@ -3459,8 +3491,10 @@ export const dbService = {
         return attempt;
       }
     } catch (e) {
+      assertNotProductionFallback("submitCheckpointAttempt", e);
       console.warn("submitCheckpointAttempt fallback:", e);
     }
+    assertNotProductionFallback("submitCheckpointAttempt (no DATABASE_URL)");
 
     const prevAttempts = fallbackStore.checkpointAttempts.filter(
       (c) => c.userId === data.userId && c.lessonId === targetLessonId && c.blockId === data.blockId
@@ -3546,8 +3580,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("addContentBlock", e);
       console.warn("addContentBlock fallback:", e);
     }
+    assertNotProductionFallback("addContentBlock (no DATABASE_URL)");
 
     const newBlock: LessonContentBlockItem = {
       id: `blk_${Date.now()}`,
@@ -3594,8 +3630,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("updateContentBlock", e);
       console.warn("updateContentBlock fallback:", e);
     }
+    assertNotProductionFallback("updateContentBlock (no DATABASE_URL)");
 
     const lesson = fallbackStore.curriculum.lessons.find((l) => l.id === lessonId);
     if (!lesson) throw new Error("Lesson not found");
@@ -3624,8 +3662,10 @@ export const dbService = {
         return { success: true };
       }
     } catch (e) {
+      assertNotProductionFallback("deleteContentBlock", e);
       console.warn("deleteContentBlock fallback:", e);
     }
+    assertNotProductionFallback("deleteContentBlock (no DATABASE_URL)");
 
     const lesson = fallbackStore.curriculum.lessons.find((l) => l.id === lessonId);
     if (!lesson) throw new Error("Lesson not found");
@@ -3659,8 +3699,10 @@ export const dbService = {
         return { success: true };
       }
     } catch (e) {
+      assertNotProductionFallback("reorderContentBlocks", e);
       console.warn("reorderContentBlocks fallback:", e);
     }
+    assertNotProductionFallback("reorderContentBlocks (no DATABASE_URL)");
 
     const lesson = fallbackStore.curriculum.lessons.find((l) => l.id === lessonId);
     if (lesson) {
@@ -4177,8 +4219,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("createQuestion", e);
       console.warn("createQuestion fallback:", e);
     }
+    assertNotProductionFallback("createQuestion (no DATABASE_URL)");
 
     const newQ: QuestionItem = {
       id: `qst_${Date.now()}`,
@@ -4238,8 +4282,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("updateQuestion", e);
       console.warn("updateQuestion fallback:", e);
     }
+    assertNotProductionFallback("updateQuestion (no DATABASE_URL)");
 
     const q = fallbackStore.questions.find((item) => item.id === id);
     if (!q) throw new Error("Question not found");
@@ -4272,8 +4318,10 @@ export const dbService = {
         return { success: true };
       }
     } catch (e) {
+      assertNotProductionFallback("deleteQuestion", e);
       console.warn("deleteQuestion fallback:", e);
     }
+    assertNotProductionFallback("deleteQuestion (no DATABASE_URL)");
 
     const idx = fallbackStore.questions.findIndex((q) => q.id === id);
     if (idx !== -1) {
@@ -4298,8 +4346,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("updateQuestionStatus", e);
       console.warn("updateQuestionStatus fallback:", e);
     }
+    assertNotProductionFallback("updateQuestionStatus (no DATABASE_URL)");
 
     const q = fallbackStore.questions.find((item) => item.id === id);
     if (!q) throw new Error("Question not found");
@@ -4480,8 +4530,10 @@ export const dbService = {
         return this.getPracticeSetById(ps.id);
       }
     } catch (e) {
+      assertNotProductionFallback("createPracticeSet", e);
       console.warn("createPracticeSet fallback:", e);
     }
+    assertNotProductionFallback("createPracticeSet (no DATABASE_URL)");
 
     const newPs: PracticeSetItem = {
       id: `ps_${Date.now()}`,
@@ -4532,8 +4584,10 @@ export const dbService = {
         return { success: true };
       }
     } catch (e) {
+      assertNotProductionFallback("addQuestionToPracticeSet", e);
       console.warn("addQuestionToPracticeSet fallback:", e);
     }
+    assertNotProductionFallback("addQuestionToPracticeSet (no DATABASE_URL)");
 
     const ps = fallbackStore.practiceSets.find((p) => p.id === practiceSetId);
     if (!ps) throw new Error("Practice set not found");
@@ -4570,8 +4624,10 @@ export const dbService = {
         return { success: true };
       }
     } catch (e) {
+      assertNotProductionFallback("removeQuestionFromPracticeSet", e);
       console.warn("removeQuestionFromPracticeSet fallback:", e);
     }
+    assertNotProductionFallback("removeQuestionFromPracticeSet (no DATABASE_URL)");
 
     const idx = fallbackStore.practiceSetQuestions.findIndex(
       (pq) => pq.practiceSetId === practiceSetId && pq.questionId === questionId
@@ -4636,8 +4692,10 @@ export const dbService = {
         return this.getPracticeSession(session.id, studentId);
       }
     } catch (e) {
+      assertNotProductionFallback("startPracticeSession", e);
       console.warn("startPracticeSession fallback:", e);
     }
+    assertNotProductionFallback("startPracticeSession (no DATABASE_URL)");
 
     const newSession: PracticeSessionItem = {
       id: `pses_${Date.now()}`,
@@ -4869,8 +4927,11 @@ export const dbService = {
         computedCorrectCount = txResult.correctCount;
         computedScore = txResult.score;
       } catch (e) {
+        assertNotProductionFallback("submitQuestionAnswer", e);
         console.warn("create attempt transaction fallback:", e);
       }
+    } else {
+      assertNotProductionFallback("submitQuestionAnswer (no DATABASE_URL)");
     }
 
     if (!attemptRecord) {
@@ -4967,9 +5028,11 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("submitQuestionAttempt", e);
       console.warn("submitQuestionAttempt fallback:", e);
     }
     if (!attemptRecord) {
+      assertNotProductionFallback("submitQuestionAttempt (no DATABASE_URL)");
       attemptRecord = {
         id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         studentId: params.studentId,
@@ -5014,7 +5077,11 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("completePracticeSession", e);
       console.warn("completePracticeSession fallback:", e);
+    }
+    if (!hasValidDatabaseUrl) {
+      assertNotProductionFallback("completePracticeSession (no DATABASE_URL)");
     }
 
     const sess = fallbackStore.practiceSessions.find((s) => s.id === sessionId);
@@ -5168,8 +5235,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("getOrCreateAITutorConversation", e);
       console.warn("getOrCreateAITutorConversation prisma fallback:", e);
     }
+    assertNotProductionFallback("getOrCreateAITutorConversation (no DATABASE_URL)");
 
     const existing = fallbackStore.aiConversations.find(
       (c) =>
@@ -5259,8 +5328,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("saveAITutorMessage", e);
       console.warn("saveAITutorMessage prisma fallback:", e);
     }
+    assertNotProductionFallback("saveAITutorMessage (no DATABASE_URL)");
 
     const newMsg = {
       id: `aimsg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -5353,8 +5424,10 @@ export const dbService = {
         return;
       }
     } catch (e) {
+      assertNotProductionFallback("markHintUsedOnQuestionAttempt", e);
       console.warn("markHintUsedOnQuestionAttempt prisma fallback:", e);
     }
+    assertNotProductionFallback("markHintUsedOnQuestionAttempt (no DATABASE_URL)");
 
     fallbackStore.questionAttempts.forEach((a) => {
       if (
@@ -5639,8 +5712,10 @@ export const dbService = {
         return this.getMistakeAnalysisById(analysis.id, studentId, "STUDENT");
       }
     } catch (e) {
+      assertNotProductionFallback("saveMistakeAnalysis", e);
       console.warn("saveMistakeAnalysis prisma fallback:", e);
     }
+    assertNotProductionFallback("saveMistakeAnalysis (no DATABASE_URL)");
 
     // Mark previous fallback analyses as OUTDATED
     if (skillId) {
@@ -6133,8 +6208,10 @@ export const dbService = {
         return rec;
       }
     } catch (e) {
+      assertNotProductionFallback("createAdaptiveRecommendation", e);
       console.warn("createAdaptiveRecommendation prisma fallback:", e);
     }
+    assertNotProductionFallback("createAdaptiveRecommendation (no DATABASE_URL)");
 
     const newRecord = {
       id,
@@ -6183,8 +6260,10 @@ export const dbService = {
         return;
       }
     } catch (e) {
+      assertNotProductionFallback("supersedeActiveRecommendations", e);
       console.warn("supersedeActiveRecommendations prisma fallback:", e);
     }
+    assertNotProductionFallback("supersedeActiveRecommendations (no DATABASE_URL)");
 
     (fallbackStore.adaptiveRecommendations || []).forEach((r) => {
       if (r.studentId === studentId && r.status === "ACTIVE" && (!skillId || r.skillId === skillId)) {
@@ -6216,8 +6295,10 @@ export const dbService = {
         return updated;
       }
     } catch (e) {
+      assertNotProductionFallback("updateAdaptiveRecommendationStatus", e);
       console.warn("updateAdaptiveRecommendationStatus prisma fallback:", e);
     }
+    assertNotProductionFallback("updateAdaptiveRecommendationStatus (no DATABASE_URL)");
 
     const rec = (fallbackStore.adaptiveRecommendations || []).find(
       (r) => r.id === id && r.studentId === studentId
@@ -6251,8 +6332,10 @@ export const dbService = {
         });
       }
     } catch (e) {
+      assertNotProductionFallback("createAdaptiveOverrideRecord", e);
       console.warn("createAdaptiveOverrideRecord prisma fallback:", e);
     }
+    assertNotProductionFallback("createAdaptiveOverrideRecord (no DATABASE_URL)");
 
     const rec = {
       id,
@@ -6300,8 +6383,10 @@ export const dbService = {
         return updated;
       }
     } catch (e) {
+      assertNotProductionFallback("applyTeacherOverrideToRecommendation", e);
       console.warn("applyTeacherOverrideToRecommendation prisma fallback:", e);
     }
+    assertNotProductionFallback("applyTeacherOverrideToRecommendation (no DATABASE_URL)");
 
     const rec = (fallbackStore.adaptiveRecommendations || []).find((r) => r.id === id);
     if (!rec) return null;
@@ -6484,8 +6569,10 @@ export const dbService = {
         return saved;
       }
     } catch (e) {
+      assertNotProductionFallback("saveSkillMastery", e);
       console.warn("saveSkillMastery prisma fallback:", e);
     }
+    assertNotProductionFallback("saveSkillMastery (no DATABASE_URL)");
 
     if (!fallbackStore.skillMasteries) fallbackStore.skillMasteries = [];
     const idx = fallbackStore.skillMasteries.findIndex(
@@ -6526,8 +6613,10 @@ export const dbService = {
         return entry;
       }
     } catch (e) {
+      assertNotProductionFallback("recordSkillMasteryHistory", e);
       console.warn("recordSkillMasteryHistory prisma fallback:", e);
     }
+    assertNotProductionFallback("recordSkillMasteryHistory (no DATABASE_URL)");
 
     if (!fallbackStore.skillMasteryHistory) fallbackStore.skillMasteryHistory = [];
     const entry = {

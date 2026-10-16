@@ -129,3 +129,18 @@ export const submissionRateLimiter = new SlidingWindowRateLimiter({
   max: 60,
   message: "Request rate exceeded for submissions. Please slow down.",
 });
+
+// 4. AI Endpoint Rate Limiter: max 30 AI generation/analysis requests per minute per IP
+export const aiEndpointRateLimiter = new SlidingWindowRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: "Too many AI requests from this address. Please wait a moment before trying again.",
+});
+
+// 5. Document Upload Rate Limiter: max 20 document uploads per 15 minutes per IP
+export const documentUploadRateLimiter = new SlidingWindowRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: "Document upload rate limit exceeded. Please wait before uploading additional files.",
+});
+

@@ -20,6 +20,7 @@ export interface LessonMasteryReviewProps {
   skillId?: string;
   skillTitle?: string;
   practiceSetId?: string;
+  nextLesson?: { lessonId: string; title: string; eligible?: boolean; lockReasons?: string[] } | null;
   checkpointAttempts?: Record<string, { answer: string; isCorrect: boolean; feedback?: string }>;
   onNavigate?: (path: string) => void;
   onOpenAITutor?: (ctx: any) => void;
@@ -31,6 +32,7 @@ export function LessonMasteryReview({
   skillId,
   skillTitle,
   practiceSetId,
+  nextLesson,
   checkpointAttempts = {},
   onNavigate,
   onOpenAITutor,
@@ -245,14 +247,31 @@ export function LessonMasteryReview({
             )}
           </div>
 
-          <Button
-            variant="primary"
-            onClick={() => handleNav("/student/learning-path")}
-            className="gap-2 min-h-[44px] bg-teal-600 hover:bg-teal-700 w-full sm:w-auto"
-          >
-            <span>Continue Learning Path</span>
-            <ArrowRight className="w-4 h-4" />
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+            {nextLesson && nextLesson.eligible ? (
+              <Button
+                variant="primary"
+                onClick={() => handleNav(`/student/lessons/${nextLesson.lessonId}`)}
+                className="gap-2 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm animate-pulse w-full sm:w-auto"
+              >
+                <span>Proceed to Next: {nextLesson.title}</span>
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            ) : nextLesson && !nextLesson.eligible ? (
+              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-center">
+                <span>Next ({nextLesson.title}) is locked: {nextLesson.lockReasons?.[0] || "Prerequisite required"}</span>
+              </div>
+            ) : null}
+
+            <Button
+              variant="outline"
+              onClick={() => handleNav("/student/learning-path")}
+              className="gap-2 min-h-[44px] border-slate-300 text-slate-700 hover:bg-slate-100 w-full sm:w-auto"
+            >
+              <span>Back to Learning Path</span>
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

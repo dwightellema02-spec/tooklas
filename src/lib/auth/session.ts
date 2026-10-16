@@ -40,7 +40,7 @@ export function validateAuthSecret(secret: string | undefined): { isValid: boole
   if (trimmed.length < 32) {
     return {
       isValid: false,
-      error: `AUTH_SECRET must be at least 32 characters long for HMAC-SHA256 integrity (got ${trimmed.length}).`,
+      error: `AUTH_SECRET must be at least 32 characters (AUTH_SECRET is required for HMAC-SHA256 integrity, got ${trimmed.length}).`,
     };
   }
   if (KNOWN_COMPROMISED_SECRETS.has(trimmed)) {

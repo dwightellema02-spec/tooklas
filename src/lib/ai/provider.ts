@@ -3,9 +3,18 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AIProvider, TutorAIRequest, TutorAIResponseRaw } from "./types";
 
+const LEGACY_MODEL_MAP: Record<string, string> = {};
+
+function normalizeGeminiModel(rawModel?: string, fallback = "gemini-3.8-flash"): string {
+  const trimmed = (rawModel || "").trim();
+  if (!trimmed) return fallback;
+  return LEGACY_MODEL_MAP[trimmed] || trimmed;
+}
+
 export class GeminiAIProvider implements AIProvider {
   readonly name = "gemini";
-  readonly defaultModel = "gemini-3.5-flash";
+  readonly defaultModel: string = "gemini-3.8-flash";
+  private static quotaCooldownUntil = 0;
   private ai: GoogleGenAI;
   private model: string;
 
@@ -15,14 +24,29 @@ export class GeminiAIProvider implements AIProvider {
       throw new Error("Gemini API key is required but neither GEMINI_API_KEY nor AI_API_KEY was provided.");
     }
     this.ai = new GoogleGenAI({ apiKey: key });
-    this.model = model || process.env.AI_MODEL || this.defaultModel;
+    this.model = normalizeGeminiModel(model || process.env.AI_MODEL, this.defaultModel);
+  }
+
+  static resetQuotaCooldown(): void {
+    GeminiAIProvider.quotaCooldownUntil = 0;
   }
 
   async generateTutorResponse(request: TutorAIRequest): Promise<TutorAIResponseRaw> {
+    if (Date.now() < GeminiAIProvider.quotaCooldownUntil) {
+      console.warn("Gemini API quota cooldown active; delegating to LocalTutorEngine fallback.");
+      return new LocalTutorEngine().generateTutorResponse(request);
+    }
+
     const timeoutMs = request.timeoutMs || 15000;
     const modelsToTry = [this.model];
+    if (!modelsToTry.includes("gemini-3.8-flash")) {
+      modelsToTry.push("gemini-3.8-flash");
+    }
     if (!modelsToTry.includes("gemini-3.5-flash")) {
       modelsToTry.push("gemini-3.5-flash");
+    }
+    if (!modelsToTry.includes("gemini-3.5-flash-lite")) {
+      modelsToTry.push("gemini-3.5-flash-lite");
     }
 
     let lastError: any = null;
@@ -33,7 +57,7 @@ export class GeminiAIProvider implements AIProvider {
           contents: request.userPrompt,
           config: {
             systemInstruction: request.systemPrompt,
-            maxOutputTokens: request.maxTokens || 600,
+            maxOutputTokens: request.maxTokens || 1024,
             temperature: request.temperature !== undefined ? request.temperature : 0.4,
             responseMimeType: "application/json",
           },
@@ -44,7 +68,20 @@ export class GeminiAIProvider implements AIProvider {
         );
 
         const response = await Promise.race([generatePromise, timeoutPromise]);
-        const responseText = response.text || "";
+        let responseText = (response.text || "").trim();
+        const parsed = JSON.parse(responseText);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.message === undefined) {
+          const fallbackMsg =
+            parsed.response ||
+            parsed.explanation ||
+            parsed.answer ||
+            parsed.content ||
+            Object.values(parsed).find((v) => typeof v === "string");
+          if (typeof fallbackMsg === "string") {
+            parsed.message = fallbackMsg;
+            responseText = JSON.stringify(parsed);
+          }
+        }
 
         return {
           text: responseText,
@@ -58,11 +95,17 @@ export class GeminiAIProvider implements AIProvider {
         };
       } catch (err: any) {
         lastError = err;
-        console.warn(`Gemini model ${modelToUse} failed:`, err.message || err);
+        const msg = String(err?.message || err || "");
+        console.warn(`Gemini model ${modelToUse} failed:`, msg);
+        if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.toLowerCase().includes("quota")) {
+          GeminiAIProvider.quotaCooldownUntil = Date.now() + 60_000;
+          break;
+        }
       }
     }
 
-    throw lastError || new Error("All Gemini models failed.");
+    console.warn("All configured Gemini models failed. Falling back gracefully to LocalTutorEngine Socratic pedagogy:", lastError?.message || lastError);
+    return new LocalTutorEngine().generateTutorResponse(request);
   }
 }
 
@@ -80,18 +123,70 @@ export class LocalTutorEngine implements AIProvider {
     const queryMatch = request.userPrompt.match(/Student Query:\s*"([^"]*)"/i);
     const studentQuery = queryMatch ? queryMatch[1].toLowerCase().trim() : "";
 
+    const lessonTitleMatch = request.userPrompt.match(/Lesson Title:\s*([^\n\r]*)/i);
+    const activeLessonTitle = lessonTitleMatch ? lessonTitleMatch[1].trim() : "Grade 7 Mathematics";
+    const unitTitleMatch = request.userPrompt.match(/Unit:\s*([^\n\r]*)/i);
+    const activeUnitTitle = unitTitleMatch ? unitTitleMatch[1].trim() : "Integers & Rational Numbers";
+
+    const explicitEnglishRegex =
+      /\b(english|in english|english please|please english|speak english|explain in english|use english|mag-?english|switch to english|back to english|can you speak english|can we speak english|change to english|ingles|sa ingles)\b/i;
+    const explicitEnglish =
+      studentQuery === "english" ||
+      explicitEnglishRegex.test(studentQuery) ||
+      request.systemPrompt.includes("Language Mandate: English") ||
+      request.userPrompt.includes("MANDATORY LANGUAGE DIRECTIVE: The student is communicating in ENGLISH");
+
+    const explicitFilipinoRegex =
+      /\b(tagalog|filipino|sa tagalog|in tagalog|paliwanag sa tagalog|ipaliwanag sa tagalog|mag-?tagalog|tagalugin|salitang tagalog|sa filipino|in filipino|paliwanag sa filipino|ipaliwanag sa filipino|mag-?filipino)\b/i;
+
     const isFilipino =
-      request.systemPrompt.includes("Language Mandate: Natural Filipino") ||
-      request.userPrompt.includes("MANDATORY LANGUAGE DIRECTIVE: The student requested explanations in FILIPINO") ||
-      studentQuery.includes("tagalog") ||
-      studentQuery.includes("filipino") ||
-      studentQuery.includes("paliwanag sa tagalog") ||
-      studentQuery.includes("sa tagalog") ||
-      studentQuery.includes("in tagalog") ||
-      studentQuery.includes("mag-tagalog") ||
-      prompt.includes('student query: "tagalog') ||
-      prompt.includes('student query: "in tagalog') ||
-      prompt.includes('student query: "paliwanag sa tagalog');
+      !explicitEnglish &&
+      (request.systemPrompt.includes("Language Mandate: Natural Filipino") ||
+        request.userPrompt.includes("MANDATORY LANGUAGE DIRECTIVE: The student requested explanations in FILIPINO") ||
+        studentQuery === "tagalog" ||
+        studentQuery === "filipino" ||
+        explicitFilipinoRegex.test(studentQuery) ||
+        (!studentQuery && prompt.includes('student query: "tagalog')) ||
+        (!studentQuery && prompt.includes('student query: "in tagalog')) ||
+        (!studentQuery && prompt.includes('student query: "paliwanag sa tagalog')));
+
+    const languageChangeOnlyKeywords = [
+      "tagalog",
+      "in tagalog",
+      "sa tagalog",
+      "filipino",
+      "in filipino",
+      "sa filipino",
+      "mag-tagalog",
+      "magtagalog",
+      "mag-filipino",
+      "magfilipino",
+      "paliwanag sa tagalog",
+      "ipaliwanag sa tagalog",
+      "paliwanag sa filipino",
+      "ipaliwanag sa filipino",
+      "salitang tagalog",
+      "tagalog please",
+      "filipino please",
+      "english",
+      "in english",
+      "sa ingles",
+      "ingles",
+      "mag-english",
+      "magenglish",
+      "speak english",
+      "explain in english",
+      "use english",
+      "english please",
+      "please english",
+      "switch to english",
+      "back to english",
+    ];
+
+    const isLanguageChangeOnlyQuery =
+      languageChangeOnlyKeywords.includes(studentQuery) ||
+      (studentQuery.startsWith("mag-") && studentQuery.length < 15 && (studentQuery.includes("tagalog") || studentQuery.includes("english") || studentQuery.includes("filipino"))) ||
+      (studentQuery.split(/\s+/).length <= 3 && languageChangeOnlyKeywords.some((k) => studentQuery === k));
 
     let responseType = "HINT";
     let message = "";
@@ -125,8 +220,8 @@ export class LocalTutorEngine implements AIProvider {
         text: JSON.stringify({
           responseType: "REDIRECT",
           message: isFilipino
-            ? "Maging nakatutok tayo sa iyong aralin sa Grade 7 Matematika. Ako ang iyong Tuklas AI kasama sa pag-aaral, nandito upang tulungan kang maging mahusay sa integers!"
-            : "Let's focus on your Grade 7 mathematics lesson. I am your Tuklas AI learning companion, here to help you master integers and mathematical problem-solving!",
+            ? `Maging nakatutok tayo sa iyong aralin sa Grade 7 Matematika tungkol sa ${activeLessonTitle}. Ako ang iyong Tuklas AI kasama sa pag-aaral, nandito upang tulungan kang maging mahusay sa integers!`
+            : `Let's focus on your Grade 7 mathematics lesson on ${activeLessonTitle}. I am your Tuklas AI learning companion, here to help you master integers and mathematical problem-solving!`,
           guidingQuestion: isFilipino
             ? "Nais mo bang magpatuloy sa iyong kasalukuyang problema sa math?"
             : "Would you like to continue with your current math problem?",
@@ -146,19 +241,8 @@ export class LocalTutorEngine implements AIProvider {
       };
     }
 
-    // 1b. Explicit Tagalog / Filipino Request Handling
-    if (
-      isFilipino &&
-      (
-        studentQuery === "tagalog" ||
-        studentQuery === "in tagalog" ||
-        studentQuery.includes("tagalog") ||
-        studentQuery.includes("filipino") ||
-        studentQuery.includes("paliwanag") ||
-        prompt.includes('student query: "tagalog') ||
-        prompt.includes('student query: "in tagalog')
-      )
-    ) {
+    // 1b. Explicit Tagalog / Filipino Request Handling (Only when query is solely a language change command)
+    if (isFilipino && isLanguageChangeOnlyQuery) {
       return {
         text: JSON.stringify({
           responseType: "HINT",
@@ -176,15 +260,170 @@ export class LocalTutorEngine implements AIProvider {
       };
     }
 
+    // 1c. Explicit English Request Handling (Only when query is solely a language change command)
+    if (!isFilipino && isLanguageChangeOnlyQuery) {
+      return {
+        text: JSON.stringify({
+          responseType: "HINT",
+          message: "Sure! Let's continue in English. To understand this lesson, remember that every positive and negative number has a specific position on the horizontal number line. Numbers to the right are greater than numbers to the left.",
+          guidingQuestion: "Looking at the problem you're working on, what is the first number and what is its sign (positive or negative)?",
+          hintLevel: 1,
+          encouragement: "You can do this! Let's break the problem down into smaller, manageable steps.",
+          nextStep: "Identify the sign and position of the first number on the number line.",
+          detectedIssue: "NONE",
+          suggestedAction: "CONTINUE_LESSON",
+          sourceGrounding: ["DepEd MATATAG Grade 7 Mathematics English Guidance"],
+        }),
+        provider: this.name,
+        model: this.defaultModel,
+      };
+    }
+
+    // 1d. Off-topic Math / Cross-Domain Query Redirect
+    const isOffTopicQuery =
+      studentQuery.includes("area of a triangle") ||
+      studentQuery.includes("pythagorean") ||
+      studentQuery.includes("quadratic formula") ||
+      studentQuery.includes("photosynthesis") ||
+      studentQuery.includes("chemical reaction") ||
+      studentQuery.includes("who is jose rizal") ||
+      studentQuery.includes("capital of") ||
+      studentQuery.includes("president of") ||
+      (studentQuery.includes("triangle") && !prompt.includes("triangle")) ||
+      (studentQuery.includes("geometry") && !prompt.includes("geometry"));
+
+    if (isOffTopicQuery) {
+      return {
+        text: JSON.stringify({
+          responseType: "REDIRECT",
+          message: isFilipino
+            ? `Kasalukuyan nating pinag-aaralan ang aralin tungkol sa **${activeLessonTitle}**. Maging nakatutok muna tayo sa mga konsepto ng integers at number line upang maging matatag ang iyong pundasyon bago lumipat sa ibang aralin.`
+            : `We are currently focusing on your lesson on **${activeLessonTitle}**. Let's stay focused on integers and number line concepts so you build complete mastery before exploring other topics.`,
+          guidingQuestion: isFilipino
+            ? "May tanong ka ba tungkol sa mga halimbawa o numero sa kasalukuyan mong aralin?"
+            : "Do you have a question about the examples or numbers in your current lesson?",
+          hintLevel: 1,
+          encouragement: isFilipino
+            ? "Ang pagiging nakatuon sa bawat aralin ay magdadala sa iyo sa tagumpay sa matematika!"
+            : "Staying focused on one topic at a time will lead to lasting math confidence!",
+          nextStep: isFilipino
+            ? `Magpatuloy sa mga gawain sa ${activeLessonTitle}.`
+            : `Continue with the activities in ${activeLessonTitle}.`,
+          detectedIssue: "NONE",
+          suggestedAction: "CONTINUE_LESSON",
+          sourceGrounding: [`Active Lesson Grounding: ${activeLessonTitle}`],
+        }),
+        provider: this.name,
+        model: this.defaultModel,
+      };
+    }
+
+    // 1e. What is an Integer? Concept Definition
+    const studentAskedAboutIntegerDefinition =
+      studentQuery.includes("what is an integer") ||
+      studentQuery.includes("what are integers") ||
+      studentQuery.includes("define integer") ||
+      studentQuery.includes("meaning of integer") ||
+      studentQuery.includes("ano ang integer") ||
+      studentQuery.includes("ano ang mga integer") ||
+      studentQuery.includes("kahulugan ng integer") ||
+      studentQuery.includes("ibig sabihin ng integer");
+
+    if (studentAskedAboutIntegerDefinition) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Ang **integer** ay isang buong numero (whole number) na maaaring positibo ($+1, +2, +3...$), negatibo ($-1, -2, -3...$), o zero ($0$). Hindi kabilang dito ang mga fraction o decimal. Sa number line, ang mga positibong integer ay nasa kanan ng zero, at ang mga negatibong integer ay nasa kaliwa.",
+            guidingQuestion: "Masasabi mo ba kung ang $-8$ ay isang integer, at kung ito ay nasa kaliwa o kanan ng zero?",
+            hintLevel: 1,
+            encouragement: "Mahalagang pundasyon ang kahulugan ng integer para sa buong Grade 7 Math!",
+            nextStep: "Tukuyin ang mga numero sa iyong problema kung sila ay positibo o negatibong integer.",
+            detectedIssue: "NONE",
+            suggestedAction: "CONTINUE_LESSON",
+            sourceGrounding: ["DepEd MATATAG Grade 7 Mathematics: Integer Concepts"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
+      return {
+        text: JSON.stringify({
+          responseType: "EXPLANATION",
+          message: "An **integer** is any whole number that can be positive ($+1, +2, +3...$), negative ($-1, -2, -3...$), or zero ($0$). Integers do not include fractions or decimals. On a horizontal number line, positive integers lie to the right of zero, and negative integers lie to the left.",
+          guidingQuestion: "Can you tell whether $-8$ is an integer, and whether it lies to the left or right of zero?",
+          hintLevel: 1,
+          encouragement: "Understanding the definition of integers is the foundation for all Grade 7 Math!",
+          nextStep: "Identify whether the numbers in your problem are positive or negative integers.",
+          detectedIssue: "NONE",
+          suggestedAction: "CONTINUE_LESSON",
+          sourceGrounding: ["DepEd MATATAG Grade 7 Mathematics: Integer Concepts"],
+        }),
+        provider: this.name,
+        model: this.defaultModel,
+      };
+    }
+
+    // 1f. What is a Zero-Pair? Concept Definition
+    const studentAskedAboutZeroPair =
+      studentQuery.includes("what is a zero-pair") ||
+      studentQuery.includes("what is zero-pair") ||
+      studentQuery.includes("what is zero pair") ||
+      studentQuery.includes("define zero pair") ||
+      studentQuery.includes("meaning of zero pair") ||
+      studentQuery.includes("ano ang zero-pair") ||
+      studentQuery.includes("ano ang zero pair") ||
+      studentQuery.includes("kahulugan ng zero-pair") ||
+      studentQuery.includes("ibig sabihin ng zero-pair");
+
+    if (studentAskedAboutZeroPair) {
+      if (isFilipino) {
+        return {
+          text: JSON.stringify({
+            responseType: "EXPLANATION",
+            message: "Ang **zero-pair** ay binubuo ng isang positibong unit ($+1$) at isang negatibong unit ($-1$). Kapag pinagsama ang mga ito, kinakansela nila ang isa't isa dahil ang kanilang kabuuan ay zero ($+1 + (-1) = 0$). Ito ang dahilan kung bakit nagiging madali ang pagdaragdag at pagbabawas ng integers gamit ang mga counter.",
+            guidingQuestion: "Kung mayroon kang 3 positibong counter at 3 negatibong counter, ilang zero-pairs ang mabubuo mo?",
+            hintLevel: 1,
+            encouragement: "Napakagandang modelo ng zero-pairs upang makita ang matematika sa iyong isip!",
+            nextStep: "Gamitin ang konsepto ng zero-pairs sa iyong kasalukuyang problema.",
+            detectedIssue: "NONE",
+            suggestedAction: "CONTINUE_LESSON",
+            sourceGrounding: ["DepEd MATATAG Grade 7 Mathematics: Zero-Pairs Model"],
+          }),
+          provider: this.name,
+          model: this.defaultModel,
+        };
+      }
+      return {
+        text: JSON.stringify({
+          responseType: "EXPLANATION",
+          message: "A **zero-pair** consists of one positive unit ($+1$) and one negative unit ($-1$). When combined, they cancel each other out because their sum is zero ($+1 + (-1) = 0$). This makes adding and subtracting integers with counters intuitive and visual.",
+          guidingQuestion: "If you have 3 positive counters and 3 negative counters, how many zero-pairs can you form?",
+          hintLevel: 1,
+          encouragement: "The zero-pair model makes integer arithmetic visual and easy to understand!",
+          nextStep: "Use zero-pairs to help solve your current problem.",
+          detectedIssue: "NONE",
+          suggestedAction: "CONTINUE_LESSON",
+          sourceGrounding: ["DepEd MATATAG Grade 7 Mathematics: Zero-Pairs Model"],
+        }),
+        provider: this.name,
+        model: this.defaultModel,
+      };
+    }
+
     // 2. Direct Answer Requests (Part 10 - Socratic refusal)
-    if (
+    const studentAskedForDirectAnswer =
       studentQuery.includes("give me the answer") ||
       studentQuery.includes("what is the answer") ||
       studentQuery.includes("just tell me") ||
       studentQuery.includes("tell me the answer") ||
+      studentQuery.includes("give the answer") ||
       studentQuery.includes("ibigay ang sagot") ||
-      studentQuery.includes("ano ang sagot")
-    ) {
+      studentQuery.includes("ano ang sagot") ||
+      ((studentQuery.includes("sagot") || studentQuery.includes("answer")) &&
+        (studentQuery.includes("ibigay") || studentQuery.includes("give") || studentQuery.includes("tell") || studentQuery.includes("sabihin")));
+
+    if (studentAskedForDirectAnswer) {
       if (isFilipino) {
         return {
           text: JSON.stringify({
@@ -394,25 +633,24 @@ export class LocalTutorEngine implements AIProvider {
       };
     }
 
-    // 5b. Why Did We Move Left? / Directionality Reasoning (Part 9 Situation G & Part 14)
+    // 5b. Why Did We Move Left? / Negative Numbers on the Left / Directionality Reasoning (Part 9 Situation G & Part 14)
     const studentAskedAboutMoveLeft =
-      studentQuery.includes("why did you move left") ||
-      studentQuery.includes("why move left") ||
-      studentQuery.includes("why do we move left") ||
-      studentQuery.includes("why to the left") ||
-      studentQuery.includes("bakit lumipat sa kaliwa") ||
-      studentQuery.includes("bakit pakaliwa");
+      studentQuery.includes("left") ||
+      studentQuery.includes("kaliwa") ||
+      studentQuery.includes("pakaliwa") ||
+      studentQuery.includes("move left") ||
+      studentQuery.includes("lumipat sa kaliwa");
 
     if (studentAskedAboutMoveLeft) {
       if (isFilipino) {
         return {
           text: JSON.stringify({
             responseType: "EXPLANATION",
-            message: "Lumilipat tayo sa kaliwa dahil ang mga negatibong numero ay kumakatawan sa mga halagang mas mababa sa zero. Sa horizontal number line, ang mga positibong numero ay pakanan (lumalaki), habang ang mga negatibong numero o pagbabawas ay pakaliwa (lumiliit).",
-            guidingQuestion: "Kung ang pagdaragdag ng positibong numero ay pakanan, aling direksyon naman ang pagdaragdag ng negatibong numero?",
+            message: "Nasa kaliwa ng zero ang mga negatibong numero sa horizontal number line dahil kumakatawan sila sa mga halagang mas mababa sa zero. Ayon sa standard na mathematical convention, habang papunta ka sa kanan, lumalaki ang halaga ng mga numero (positibo), at habang papunta ka sa kaliwa, lumiliit ang halaga (negatibo). Kaya ang anumang negatibong numero tulad ng $-1, -2, -3$ ay palaging nasa kaliwa ng zero at mas maliit kaysa sa mga positibong numero.",
+            guidingQuestion: "Kung ang $-3$ ay nasa kaliwa ng $-1$ sa number line, aling numero ang mas malaki ang halaga?",
             hintLevel: 1,
             encouragement: "Ang pag-ugnay ng paggalaw sa number line sa mga sign ng matematika ay nagbibigay ng malalim na pang-unawa!",
-            nextStep: "Sundan ang paggalaw simula sa iyong unang punto.",
+            nextStep: "Sundan ang posisyon ng numero simula sa zero.",
             detectedIssue: "NONE",
             suggestedAction: "CONTINUE_LESSON",
             sourceGrounding: ["Horizontal Number Line Model", "Directionality Convention"],
@@ -424,11 +662,11 @@ export class LocalTutorEngine implements AIProvider {
       return {
         text: JSON.stringify({
           responseType: "EXPLANATION",
-          message: "We move to the left because negative numbers represent values less than zero. On a standard horizontal number line, positive values move right (increasing), while negative numbers or subtraction move left (decreasing).",
-          guidingQuestion: "If adding a positive number moves us right, which direction must adding a negative number take us?",
+          message: "Negative numbers are placed to the left of zero on a horizontal number line because they represent values less than zero. By mathematical convention, moving to the right represents increasing values (positive), while moving to the left represents decreasing values (negative). Therefore, numbers like $-1, -2, -3$ are always to the left of zero and are smaller than positive numbers.",
+          guidingQuestion: "If $-3$ is located to the left of $-1$ on the number line, which number has the greater value?",
           hintLevel: 1,
           encouragement: "Connecting number line motion to mathematical signs gives you deep intuition!",
-          nextStep: "Trace the movement starting from your initial point.",
+          nextStep: "Trace the position of the number starting from zero.",
           detectedIssue: "NONE",
           suggestedAction: "CONTINUE_LESSON",
           sourceGrounding: ["Horizontal Number Line Model", "Directionality Convention"],

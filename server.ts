@@ -24,7 +24,13 @@ import { StudentDashboardService } from "./src/lib/dashboard/index.ts";
 import { TeacherService, TeacherAIService } from "./src/lib/teacher/index.ts";
 import { AssessmentService, ResearchService, ResearchExporter } from "./src/lib/research/index.ts";
 import { validateProductionEnv, getSanitizedEnvStatus } from "./src/lib/env.ts";
-import { loginRateLimiter, registerRateLimiter } from "./src/lib/rate-limiter.ts";
+import {
+  loginRateLimiter,
+  registerRateLimiter,
+  submissionRateLimiter,
+  aiEndpointRateLimiter,
+  documentUploadRateLimiter,
+} from "./src/lib/rate-limiter.ts";
 import { jsonParsingErrorHandler, centralizedErrorHandler } from "./src/lib/errors.ts";
 import { safeLog } from "./src/lib/logger.ts";
 import { extractDocumentContent } from "./src/lib/documents/document-extractor.ts";
@@ -41,12 +47,85 @@ try {
 }
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
+
+// Security Headers Middleware (LIM-05)
+// Explicitly permits same-origin microphone access so Web Speech API works in Edge and Chrome.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+  res.setHeader("Permissions-Policy", "microphone=(self), camera=(), geolocation=()");
+  const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+  if (isProd || isHttps) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+
+// Same-Origin CSRF Protection Middleware for Mutating API Requests (LIM-04)
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  if (!mutatingMethods.has(req.method.toUpperCase())) {
+    return next();
+  }
+
+  const sourceHeader = req.headers.origin || req.headers.referer;
+  if (sourceHeader) {
+    try {
+      const sourceHost = new URL(sourceHeader).host.toLowerCase();
+      const requestHost = (
+        (req.headers["x-forwarded-host"] as string) ||
+        req.headers.host ||
+        ""
+      )
+        .split(",")[0]
+        .trim()
+        .toLowerCase();
+
+      let allowedAppHost = "";
+      if (process.env.APP_URL) {
+        try {
+          allowedAppHost = new URL(process.env.APP_URL).host.toLowerCase();
+        } catch {
+          // Ignore malformed APP_URL
+        }
+      }
+
+      if (requestHost && sourceHost !== requestHost && sourceHost !== allowedAppHost) {
+        return res.status(403).json({
+          success: false,
+          error: "Forbidden: Cross-origin state-changing request blocked by CSRF policy.",
+        });
+      }
+    } catch {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden: Invalid Origin or Referer header.",
+      });
+    }
+  }
+  next();
+});
 
 app.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ limit: "30mb", extended: true }));
 app.use(jsonParsingErrorHandler);
+
+// Teacher documents (PDF/DOCX) keep their extracted text in `notes` for the AI tutor.
+// That text is for teachers and the server-side tutor only, so non-staff never receive it.
+function withoutDocumentText<T extends { resources?: any[] }>(lesson: T): T {
+  if (!lesson?.resources) return lesson;
+  return {
+    ...lesson,
+    resources: lesson.resources.map((r: any) =>
+      r.type === "PDF" || r.type === "DOCUMENT" ? { ...r, notes: undefined } : r
+    ),
+  };
+}
 
 // Helper to extract session from Cookie or Bearer header
 function getSessionFromRequest(req: Request): SessionPayload | null {
@@ -116,7 +195,7 @@ app.post("/api/auth/register", registerRateLimiter.middleware(), async (req: Req
     res.cookie("tuklas_session", token, {
       httpOnly: true,
       secure: isHttps || isProd,
-      sameSite: isHttps || isProd ? "none" : "lax",
+      sameSite: "lax",
       path: "/",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     });
@@ -177,7 +256,7 @@ app.post("/api/auth/login", loginRateLimiter.middleware(), async (req: Request, 
     res.cookie("tuklas_session", token, {
       httpOnly: true,
       secure: isHttps || isProd,
-      sameSite: isHttps || isProd ? "none" : "lax",
+      sameSite: "lax",
       path: "/",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     });
@@ -205,12 +284,73 @@ app.post("/api/auth/login", loginRateLimiter.middleware(), async (req: Request, 
   }
 });
 
+// Development-Only Quick Login Route (Strictly disabled in production — LIM-01)
+app.post("/api/auth/dev-quick-login", loginRateLimiter.middleware(), async (req: Request, res: Response) => {
+  if (isProd || process.env.ENABLE_DEV_QUICK_LOGIN === "false") {
+    return res.status(404).json({
+      success: false,
+      error: "Development quick login is disabled in production.",
+    });
+  }
+
+  try {
+    const requestedRole = String(req.body?.role || "STUDENT").toUpperCase();
+    const roleEmailMap: Record<string, string> = {
+      STUDENT: "student@tuklas.ai",
+      TEACHER: "teacher@tuklas.ai",
+      ADMIN: "admin@tuklas.ai",
+      RESEARCHER: "student@tuklas.ai",
+    };
+
+    const targetEmail = roleEmailMap[requestedRole];
+    if (!targetEmail) {
+      return res.status(400).json({ success: false, error: "Unsupported development role." });
+    }
+
+    const user = await dbService.findUserByEmail(targetEmail);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "Development test account not found." });
+    }
+
+    const token = createSessionToken({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    });
+
+    const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+    res.cookie("tuklas_session", token, {
+      httpOnly: true,
+      secure: isHttps,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+    });
+
+    return res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+      token,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Development quick login failed";
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
 app.post("/api/auth/logout", (_req: Request, res: Response) => {
   const isHttps = _req.secure || _req.headers["x-forwarded-proto"] === "https";
   res.clearCookie("tuklas_session", {
+    httpOnly: true,
     path: "/",
     secure: isHttps || isProd,
-    sameSite: isHttps || isProd ? "none" : "lax",
+    sameSite: "lax",
   });
   return res.json({ success: true, message: "Logged out successfully" });
 });
@@ -228,9 +368,10 @@ app.get("/api/auth/me", async (req: Request, res: Response) => {
     if (!user) {
       const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
       res.clearCookie("tuklas_session", {
+        httpOnly: true,
         path: "/",
         secure: isHttps || isProd,
-        sameSite: isHttps || isProd ? "none" : "lax",
+        sameSite: "lax",
       });
       return res.status(401).json({ success: false, user: null, error: "User record not found" });
     }
@@ -284,10 +425,21 @@ app.get("/api/curriculum", async (_req: Request, res: Response) => {
 
 app.get("/api/lessons", async (req: Request, res: Response) => {
   try {
-    const status = req.query.status as LessonStatus | undefined;
+    const session = getSessionFromRequest(req);
+    const isStaff = session && (session.role === "TEACHER" || session.role === "ADMIN");
+
+    // Non-staff and unauthenticated visitors can only list PUBLISHED lessons
+    const status = (isStaff ? req.query.status : "PUBLISHED") as LessonStatus | undefined;
     const unitId = req.query.unitId as string | undefined;
-    const lessons = await dbService.getLessons({ status, unitId });
-    return res.json({ data: lessons });
+    let lessons: any[] = await dbService.getLessons({ status, unitId });
+
+    // Teachers cannot see another teacher's DRAFT lessons (unless ADMIN)
+    if (session?.role === "TEACHER") {
+      lessons = lessons.filter(
+        (l) => !(l.status === "DRAFT" && l.authorId && l.authorId !== session.userId)
+      );
+    }
+    return res.json({ data: isStaff ? lessons : lessons.map(withoutDocumentText) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to load lessons";
     return res.status(500).json({ error: message });
@@ -319,7 +471,7 @@ app.get("/api/lessons/:id", async (req: Request, res: Response) => {
       });
     }
 
-    return res.json({ data: lesson });
+    return res.json({ data: isStaff ? lesson : withoutDocumentText(lesson) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to retrieve lesson";
     return res.status(500).json({ error: message });
@@ -603,7 +755,7 @@ app.delete("/api/lessons/:id/video/:resourceId", async (req: Request, res: Respo
  * Upload and extract text from teacher PDF or DOCX material.
  * Supports Base64 encoded file payloads and validates MIME types, size limits, and RBAC.
  */
-app.post("/api/lessons/:id/documents", async (req: Request, res: Response) => {
+app.post("/api/lessons/:id/documents", documentUploadRateLimiter.middleware(), async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -990,10 +1142,41 @@ app.get("/api/student/lessons/:id/session", async (req: Request, res: Response) 
     const lessonSession = await dbService.getLessonSession(userId, id);
     const attempts = await dbService.getCheckpointAttempts(userId, id);
 
+    let nextLessonInfo: any = null;
+    try {
+      const pathData = await dbService.getStudentLearningPath(userId);
+      const currentIndex = pathData.learningPath.findIndex((n: any) => n.lessonId === id);
+      if (currentIndex !== -1 && currentIndex < pathData.learningPath.length - 1) {
+        const currentLessonNode = pathData.learningPath.find((n: any) => n.lessonId === id);
+        const currentUnitId = currentLessonNode?.unitId;
+        const currentSubjectId = currentLessonNode?.subjectId;
+
+        const subsequentLessons = pathData.learningPath.slice(currentIndex + 1);
+        const nextCandidate =
+          subsequentLessons.find((n: any) => {
+            if (currentUnitId && n.unitId === currentUnitId) return true;
+            if (currentSubjectId && n.subjectId === currentSubjectId) return true;
+            return false;
+          }) || subsequentLessons[0];
+        if (nextCandidate) {
+          nextLessonInfo = {
+            lessonId: nextCandidate.lessonId,
+            title: nextCandidate.title,
+            state: nextCandidate.state,
+            eligible: nextCandidate.state === "AVAILABLE" || nextCandidate.state === "IN_PROGRESS",
+            lockReasons: nextCandidate.lockReasons || [],
+          };
+        }
+      }
+    } catch (pathErr) {
+      console.warn("Failed to compute next eligible lesson on get session:", pathErr);
+    }
+
     return res.json({
       data: {
         session: lessonSession,
         attempts,
+        nextLesson: nextLessonInfo,
       },
     });
   } catch (error: unknown) {
@@ -1018,12 +1201,46 @@ app.post("/api/student/lessons/:id/session", async (req: Request, res: Response)
       isCompleted,
     });
 
-    // If marked completed, update student progress record
+    // If marked completed, update student progress record and compute next eligible lesson
+    let nextLessonInfo: any = null;
     if (isCompleted) {
       await dbService.updateStudentProgress(userId, id, { action: "COMPLETE" });
+      try {
+        const pathData = await dbService.getStudentLearningPath(userId);
+        const currentIndex = pathData.learningPath.findIndex((n: any) => n.lessonId === id);
+        if (currentIndex !== -1 && currentIndex < pathData.learningPath.length - 1) {
+          const currentLessonNode = pathData.learningPath.find((n: any) => n.lessonId === id);
+          const currentUnitId = currentLessonNode?.unitId;
+          const currentSubjectId = currentLessonNode?.subjectId;
+
+          const subsequentLessons = pathData.learningPath.slice(currentIndex + 1);
+          const nextCandidate =
+            subsequentLessons.find((n: any) => {
+              if (currentUnitId && n.unitId === currentUnitId) return true;
+              if (currentSubjectId && n.subjectId === currentSubjectId) return true;
+              return false;
+            }) || subsequentLessons[0];
+          if (nextCandidate) {
+            nextLessonInfo = {
+              lessonId: nextCandidate.lessonId,
+              title: nextCandidate.title,
+              state: nextCandidate.state,
+              eligible: nextCandidate.state === "AVAILABLE" || nextCandidate.state === "IN_PROGRESS",
+              lockReasons: nextCandidate.lockReasons || [],
+            };
+          }
+        }
+      } catch (pathErr) {
+        console.warn("Failed to compute next eligible lesson on completion:", pathErr);
+      }
     }
 
-    return res.json({ data: updated });
+    return res.json({
+      data: {
+        ...(typeof updated === "object" ? updated : { updated }),
+        nextLesson: nextLessonInfo,
+      },
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to update lesson session";
     return res.status(500).json({ error: message });
@@ -1657,7 +1874,7 @@ app.get("/api/student/practice-history", async (req: Request, res: Response) => 
 // -------------------------------------------------------------
 
 // Main AI Tutor interaction endpoint
-app.post("/api/ai/tutor", async (req: Request, res: Response) => {
+app.post("/api/ai/tutor", aiEndpointRateLimiter.middleware(), async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session) {
@@ -1759,7 +1976,7 @@ app.patch("/api/ai/settings", async (req: Request, res: Response) => {
 });
 
 // Phase 21: Content-Grounded Practice Question Generator
-app.post("/api/ai/practice/generate", async (req: Request, res: Response) => {
+app.post("/api/ai/practice/generate", aiEndpointRateLimiter.middleware(), async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session) {
@@ -1824,6 +2041,19 @@ app.get("/api/student/insights/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Insight not found or access denied." });
     }
 
+    if (session.role === "TEACHER" && insight.studentId !== session.userId) {
+      const isAuth = await TeacherService.isTeacherAuthorizedForStudent(
+        session.userId,
+        insight.studentId,
+        session.role
+      );
+      if (!isAuth) {
+        return res.status(403).json({
+          error: "Forbidden: You are not authorized to view this student's learning insight.",
+        });
+      }
+    }
+
     return res.json({ data: insight });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to load learning insight";
@@ -1831,7 +2061,7 @@ app.get("/api/student/insights/:id", async (req: Request, res: Response) => {
   }
 });
 
-// Teacher/Admin retrieves mistake analyses for a student with evidence
+// Teacher/Admin retrieves mistake analyses for a student with evidence (LIM-10: Classroom ownership verified)
 app.get("/api/teacher/students/:studentId/insights", async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
@@ -1840,6 +2070,11 @@ app.get("/api/teacher/students/:studentId/insights", async (req: Request, res: R
     }
 
     const { studentId } = req.params;
+    const isAuth = await TeacherService.isTeacherAuthorizedForStudent(session.userId, studentId, session.role);
+    if (!isAuth) {
+      return res.status(403).json({ error: "Forbidden: You are not authorized to view insights for this student." });
+    }
+
     const { skillId, limit } = req.query;
 
     const insights = await dbService.getMistakeAnalysesForStudent(studentId, {
@@ -1855,8 +2090,8 @@ app.get("/api/teacher/students/:studentId/insights", async (req: Request, res: R
   }
 });
 
-// Teacher/Admin manually triggers learning pattern analysis for a student
-app.post("/api/teacher/students/:studentId/analyze", async (req: Request, res: Response) => {
+// Teacher/Admin manually triggers learning pattern analysis for a student (LIM-06, LIM-10)
+app.post("/api/teacher/students/:studentId/analyze", aiEndpointRateLimiter.middleware(), async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -1864,6 +2099,11 @@ app.post("/api/teacher/students/:studentId/analyze", async (req: Request, res: R
     }
 
     const { studentId } = req.params;
+    const isAuth = await TeacherService.isTeacherAuthorizedForStudent(session.userId, studentId, session.role);
+    if (!isAuth) {
+      return res.status(403).json({ error: "Forbidden: You are not authorized to analyze this student." });
+    }
+
     const { skillId, lessonId, practiceSessionId, maxAttempts } = req.body;
 
     const analysis = await MistakeAnalyzerService.analyzeStudentMistakes({
@@ -1911,7 +2151,7 @@ app.get("/api/student/adaptive/recommendation", async (req: Request, res: Respon
 });
 
 // Student forcefully generates / refreshes adaptive recommendation
-app.post("/api/student/adaptive/recommendation/generate", async (req: Request, res: Response) => {
+app.post("/api/student/adaptive/recommendation/generate", submissionRateLimiter.middleware(), async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session) {
@@ -2111,7 +2351,7 @@ app.get("/api/student/mastery/:skillId", async (req: Request, res: Response) => 
 });
 
 // Student requests on-demand recalculation of mastery for a skill
-app.post("/api/student/mastery/:skillId/recalculate", async (req: Request, res: Response) => {
+app.post("/api/student/mastery/:skillId/recalculate", submissionRateLimiter.middleware(), async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session) {
@@ -2348,7 +2588,7 @@ app.post("/api/teacher/classes/:classId/assignments", async (req: Request, res: 
 });
 
 // Teacher asks pedagogical questions to the Teacher AI Assistant
-app.post("/api/teacher/ai-assistant", async (req: Request, res: Response) => {
+app.post("/api/teacher/ai-assistant", aiEndpointRateLimiter.middleware(), async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -2616,7 +2856,7 @@ app.post("/api/student/assessments/attempts/:attemptId/submit", async (req: Requ
 });
 
 // Teacher/Admin views research profile for a student (IDOR scoped)
-app.get("/api/teacher/research/profile/:studentId", async (req: Request, res: Response) => {
+app.get(["/api/teacher/research/profile/:studentId", "/api/admin/research/profile/:studentId"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -2638,7 +2878,7 @@ app.get("/api/teacher/research/profile/:studentId", async (req: Request, res: Re
 });
 
 // Teacher/Admin views Pre-Test vs Post-Test comparison
-app.get("/api/teacher/research/comparison", async (req: Request, res: Response) => {
+app.get(["/api/teacher/research/comparison", "/api/admin/research/comparison"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -2649,6 +2889,13 @@ app.get("/api/teacher/research/comparison", async (req: Request, res: Response) 
     const postTestId = (req.query.postTestId as string) || "asm_post_integers";
     const classroomId = req.query.classroomId as string | undefined;
 
+    if (session.role === "TEACHER" && classroomId) {
+      const classes = await TeacherService.getAuthorizedClassrooms(session.userId, session.role);
+      if (!classes.some((c: any) => c.id === classroomId)) {
+        return res.status(403).json({ error: "Forbidden: You are not authorized to view this classroom's research comparison." });
+      }
+    }
+
     const comparison = await ResearchService.getPrePostComparison(preTestId, postTestId, classroomId);
     return res.json({ data: comparison });
   } catch (error: unknown) {
@@ -2658,7 +2905,7 @@ app.get("/api/teacher/research/comparison", async (req: Request, res: Response) 
 });
 
 // Teacher/Admin views empirical Difficult Skills analysis
-app.get("/api/teacher/research/difficult-skills", async (req: Request, res: Response) => {
+app.get(["/api/teacher/research/difficult-skills", "/api/admin/research/difficult-skills"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -2667,6 +2914,13 @@ app.get("/api/teacher/research/difficult-skills", async (req: Request, res: Resp
 
     const gradeLevel = req.query.grade ? Number(req.query.grade) : undefined;
     const classroomId = req.query.classroomId as string | undefined;
+
+    if (session.role === "TEACHER" && classroomId) {
+      const classes = await TeacherService.getAuthorizedClassrooms(session.userId, session.role);
+      if (!classes.some((c: any) => c.id === classroomId)) {
+        return res.status(403).json({ error: "Forbidden: You are not authorized to view this classroom's skill analytics." });
+      }
+    }
 
     const difficultSkills = await ResearchService.getDifficultSkills({ gradeLevel, classroomId });
     return res.json({ data: difficultSkills });
@@ -2677,7 +2931,7 @@ app.get("/api/teacher/research/difficult-skills", async (req: Request, res: Resp
 });
 
 // Teacher/Admin views aggregate Mistake Analytics
-app.get("/api/teacher/research/mistakes", async (req: Request, res: Response) => {
+app.get(["/api/teacher/research/mistakes", "/api/admin/research/mistakes"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -2693,7 +2947,7 @@ app.get("/api/teacher/research/mistakes", async (req: Request, res: Response) =>
 });
 
 // Teacher/Admin views Intervention Observations (strictly non-causal)
-app.get("/api/teacher/research/interventions", async (req: Request, res: Response) => {
+app.get(["/api/teacher/research/interventions", "/api/admin/research/interventions"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -2709,7 +2963,7 @@ app.get("/api/teacher/research/interventions", async (req: Request, res: Respons
 });
 
 // Teacher/Admin views longitudinal Time Series metrics
-app.get("/api/teacher/research/time-series", async (req: Request, res: Response) => {
+app.get(["/api/teacher/research/time-series", "/api/admin/research/time-series"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
@@ -2724,17 +2978,29 @@ app.get("/api/teacher/research/time-series", async (req: Request, res: Response)
   }
 });
 
-// Teacher/Admin exports standardized research metrics CSV
-app.get("/api/teacher/research/export/metrics.csv", async (req: Request, res: Response) => {
+// Teacher/Admin exports standardized research metrics CSV (LIM-08: Exports all authorized students)
+app.get(["/api/teacher/research/export/metrics.csv", "/api/admin/research/export/metrics.csv"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
       return res.status(403).json({ error: "Forbidden: Teacher or Administrator access required." });
     }
 
-    // Export authorized students
-    const profile = await ResearchService.getStudentResearchProfile("usr_student_01");
-    const csvData = ResearchExporter.exportMetricsSummaryCsv([profile]);
+    const classroomId = req.query.classroomId as string | undefined;
+    const { students: authorizedStudents } = await TeacherService.getAuthorizedStudentsPaginated(
+      session.userId,
+      session.role,
+      { classId: classroomId, limit: 500 }
+    );
+
+    const studentIds = authorizedStudents.length > 0
+      ? authorizedStudents.map((s) => s.id)
+      : ["usr_student_01"];
+
+    const profiles = await Promise.all(
+      studentIds.map((studentId) => ResearchService.getStudentResearchProfile(studentId))
+    );
+    const csvData = ResearchExporter.exportMetricsSummaryCsv(profiles);
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="tuklas_research_metrics_${Date.now()}.csv"`);
@@ -2745,18 +3011,32 @@ app.get("/api/teacher/research/export/metrics.csv", async (req: Request, res: Re
   }
 });
 
-// Teacher/Admin exports raw question attempt evidence CSV
-app.get("/api/teacher/research/export/attempts.csv", async (req: Request, res: Response) => {
+// Teacher/Admin exports raw question attempt evidence CSV (LIM-08: Scoped to authorized students & real names)
+app.get(["/api/teacher/research/export/attempts.csv", "/api/admin/research/export/attempts.csv"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
       return res.status(403).json({ error: "Forbidden: Teacher or Administrator access required." });
     }
 
+    const classroomId = req.query.classroomId as string | undefined;
+    const { students: authorizedStudents } = await TeacherService.getAuthorizedStudentsPaginated(
+      session.userId,
+      session.role,
+      { classId: classroomId, limit: 500 }
+    );
+    const authorizedStudentIdSet = new Set<string>(authorizedStudents.map((s) => s.id));
+    const studentNameMap = new Map<string, string>(authorizedStudents.map((s) => [s.id, s.name]));
+
     let attempts: any[] = [];
     if (hasValidDatabaseUrl) {
       try {
+        const whereClause = session.role === "ADMIN" && !classroomId
+          ? {}
+          : { studentId: { in: Array.from(authorizedStudentIdSet) } };
+
         const dbAttempts = await prisma.questionAttempt.findMany({
+          where: whereClause,
           include: {
             question: true,
             student: true,
@@ -2765,7 +3045,7 @@ app.get("/api/teacher/research/export/attempts.csv", async (req: Request, res: R
         });
         attempts = dbAttempts.map((a: any) => ({
           studentId: a.studentId,
-          studentName: a.student?.name || "Juan de la Cruz",
+          studentName: a.student?.name || studentNameMap.get(a.studentId) || a.studentId,
           questionId: a.questionId,
           skillId: a.skillId,
           attemptNumber: a.attemptNumber,
@@ -2783,11 +3063,15 @@ app.get("/api/teacher/research/export/attempts.csv", async (req: Request, res: R
     }
 
     if (attempts.length === 0) {
-      attempts = fallbackStore.questionAttempts.map((a: any) => {
+      const filteredFallback = fallbackStore.questionAttempts.filter((a: any) =>
+        (session.role === "ADMIN" && !classroomId) || authorizedStudentIdSet.size === 0 || authorizedStudentIdSet.has(a.studentId)
+      );
+      attempts = filteredFallback.map((a: any) => {
         const q = fallbackStore.questions.find((fq: any) => fq.id === a.questionId) || ({} as any);
+        const u = fallbackStore.users.find((fu: any) => fu.id === a.studentId);
         return {
           studentId: a.studentId,
-          studentName: "Juan de la Cruz",
+          studentName: u?.name || studentNameMap.get(a.studentId) || a.studentId,
           questionId: a.questionId,
           skillId: a.skillId,
           attemptNumber: a.attemptNumber,
@@ -2813,7 +3097,7 @@ app.get("/api/teacher/research/export/attempts.csv", async (req: Request, res: R
 });
 
 // Teacher/Admin exports Pre/Post comparison CSV
-app.get("/api/teacher/research/export/comparison.csv", async (req: Request, res: Response) => {
+app.get(["/api/teacher/research/export/comparison.csv", "/api/admin/research/export/comparison.csv"], async (req: Request, res: Response) => {
   try {
     const session = getSessionFromRequest(req);
     if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {

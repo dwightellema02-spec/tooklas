@@ -14,6 +14,8 @@ export interface VoiceTutorPanelProps {
   onStopSpeaking: () => void;
   onRetry: () => void;
   onDismissError?: () => void;
+  voiceLang?: "fil-PH" | "en-PH";
+  onToggleVoiceLang?: () => void;
   className?: string;
 }
 
@@ -27,6 +29,8 @@ export function VoiceTutorPanel({
   onStopSpeaking,
   onRetry,
   onDismissError,
+  voiceLang = "fil-PH",
+  onToggleVoiceLang,
   className = "",
 }: VoiceTutorPanelProps) {
   const [showLabModal, setShowLabModal] = useState(false);
@@ -178,6 +182,18 @@ export function VoiceTutorPanel({
             )}
             <span>Auto-read responses: {autoSpeak ? "On" : "Off"}</span>
           </button>
+
+          {onToggleVoiceLang && (
+            <button
+              type="button"
+              onClick={onToggleVoiceLang}
+              title="Click to toggle voice recognition language between Filipino and English"
+              aria-label={`Speech language: ${voiceLang === "fil-PH" ? "Filipino / Tagalog" : "English"}. Tap to change.`}
+              className="flex items-center gap-1 font-semibold text-emerald-800 hover:text-emerald-950 bg-emerald-100/70 hover:bg-emerald-200/80 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+            >
+              <span>Lang: {voiceLang === "fil-PH" ? "Tagalog / Filipino" : "English"}</span>
+            </button>
+          )}
 
           <button
             type="button"

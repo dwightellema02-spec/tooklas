@@ -17,9 +17,29 @@ export interface SpeechSynthesisCallbacks {
 export class SpeechSynthesisController {
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private callbacks: SpeechSynthesisCallbacks;
+  private cachedVoices: SpeechSynthesisVoice[] = [];
+  private voicesLoaded: boolean = false;
+  private onVoicesChangedHandler: (() => void) | null = null;
 
   constructor(callbacks: SpeechSynthesisCallbacks = {}) {
     this.callbacks = callbacks;
+    this.initVoices();
+  }
+
+  private initVoices(): void {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const populate = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v && v.length > 0) {
+        this.cachedVoices = v;
+        this.voicesLoaded = true;
+      }
+    };
+    populate();
+    if (!this.voicesLoaded && window.speechSynthesis.addEventListener) {
+      this.onVoicesChangedHandler = populate;
+      window.speechSynthesis.addEventListener("voiceschanged", populate);
+    }
   }
 
   public setCallbacks(callbacks: SpeechSynthesisCallbacks) {
@@ -45,7 +65,13 @@ export class SpeechSynthesisController {
    */
   public getVoices(): SpeechSynthesisVoice[] {
     if (!this.isSupported()) return [];
-    return window.speechSynthesis.getVoices();
+    if (this.cachedVoices.length > 0) return this.cachedVoices;
+    const v = window.speechSynthesis.getVoices();
+    if (v && v.length > 0) {
+      this.cachedVoices = v;
+      this.voicesLoaded = true;
+    }
+    return v;
   }
 
   /**
@@ -70,49 +96,57 @@ export class SpeechSynthesisController {
       const utterance = new SpeechSynthesisUtterance(spokenText);
       this.currentUtterance = utterance;
 
-      utterance.rate = options.rate ?? 0.95; // Slightly slower for clear mathematical explanation
+      utterance.rate = options.rate ?? 1.0; // 1.0 is native natural speed for Neural TTS voices
       utterance.pitch = options.pitch ?? 1.0;
       utterance.volume = options.volume ?? 1.0;
 
       const isFilipino =
         Boolean(options.lang?.startsWith("fil") || options.lang?.startsWith("tl")) ||
-        isFilipinoText(rawText);
+        (!options.lang?.startsWith("en") && isFilipinoText(rawText));
       const targetLang = options.lang || (isFilipino ? "fil-PH" : "en-US");
       utterance.lang = targetLang;
 
-      // Select preferred voice if available
-      const voices = this.getVoices();
+      // Select preferred voice if available (with fallback query if cache wasn't ready)
+      let voices = this.getVoices();
+      if (voices.length === 0 && typeof window !== "undefined" && window.speechSynthesis) {
+        voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          this.cachedVoices = voices;
+          this.voicesLoaded = true;
+        }
+      }
+
       if (voices.length > 0) {
         if (options.voiceName) {
           const match = voices.find((v) => v.name === options.voiceName);
           if (match) utterance.voice = match;
         } else if (isFilipino) {
-          // Prioritize Filipino / Tagalog voices (e.g. Microsoft Angelo, Microsoft Blessica, Google Filipino)
+          // Prioritize Filipino / Tagalog voices (Angelo first for natural instructional tone, then Blessica)
           const filipinoVoice =
-            voices.find(
-              (v) =>
-                v.name.toLowerCase().includes("angelo") ||
-                v.name.toLowerCase().includes("blessica") ||
-                v.name.toLowerCase().includes("filipino") ||
-                v.name.toLowerCase().includes("tagalog")
-            ) ||
-            voices.find(
-              (v) =>
-                v.lang.toLowerCase().startsWith("fil") ||
-                v.lang.toLowerCase().startsWith("tl")
-            ) ||
-            voices.find((v) => v.lang.toLowerCase().startsWith("en-ph"));
+            voices.find((v) => v.name.toLowerCase().includes("angelo") && (v.lang.startsWith("fil") || v.lang.startsWith("tl"))) ||
+            voices.find((v) => v.name.toLowerCase().includes("blessica") && (v.lang.startsWith("fil") || v.lang.startsWith("tl"))) ||
+            voices.find((v) => v.name.toLowerCase().includes("angelo")) ||
+            voices.find((v) => v.name.toLowerCase().includes("blessica")) ||
+            voices.find((v) => v.lang.toLowerCase().startsWith("fil") || v.lang.toLowerCase().startsWith("tl")) ||
+            voices.find((v) => v.name.toLowerCase().includes("filipino") || v.name.toLowerCase().includes("tagalog")) ||
+            voices.find((v) => v.lang.toLowerCase().startsWith("en-ph")) ||
+            voices.find((v) => v.lang.toLowerCase().startsWith("id")); // Indonesian has phonetically close Austronesian vowel sounds as fallback in Chrome
 
           if (filipinoVoice) {
             utterance.voice = filipinoVoice;
           }
         } else {
-          // Look for English or Philippine English voice
-          const preferred =
-            voices.find((v) => v.lang.startsWith("en-PH")) ||
+          // Prioritize Philippine English (natural accent for Filipino learners), then US/GB Natural English
+          const englishVoice =
+            voices.find((v) => v.lang.toLowerCase().startsWith("en-ph") && v.name.toLowerCase().includes("natural")) ||
+            voices.find((v) => v.lang.toLowerCase().startsWith("en-ph")) ||
+            voices.find((v) => v.name.toLowerCase().includes("natural") && (v.lang.startsWith("en-US") || v.lang.startsWith("en-GB"))) ||
             voices.find((v) => v.lang.startsWith("en-US") || v.lang.startsWith("en-GB")) ||
             voices[0];
-          if (preferred) utterance.voice = preferred;
+
+          if (englishVoice) {
+            utterance.voice = englishVoice;
+          }
         }
       }
 
@@ -196,5 +230,9 @@ export class SpeechSynthesisController {
    */
   public destroy(): void {
     this.stop();
+    if (this.onVoicesChangedHandler && typeof window !== "undefined" && window.speechSynthesis?.removeEventListener) {
+      window.speechSynthesis.removeEventListener("voiceschanged", this.onVoicesChangedHandler);
+      this.onVoicesChangedHandler = null;
+    }
   }
 }

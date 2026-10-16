@@ -72,6 +72,8 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
   const [completedBlockIds, setCompletedBlockIds] = useState<string[]>([]);
   const [attemptsMap, setAttemptsMap] = useState<Record<string, any>>({});
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
+  const [nextLessonInfo, setNextLessonInfo] = useState<any>(null);
+  const [completing, setCompleting] = useState<boolean>(false);
   const [showOutline, setShowOutline] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<"step" | "scroll">("step");
   const [isAITutorOpen, setIsAITutorOpen] = useState<boolean>(false);
@@ -131,6 +133,10 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
             }
           }
 
+          if (sessionJson.data?.nextLesson) {
+            setNextLessonInfo(sessionJson.data.nextLesson);
+          }
+
           // Build attempts dictionary
           const attMap: Record<string, any> = {};
           attempts.forEach((a: any) => {
@@ -160,7 +166,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
   // Sync session state to server
   const syncSession = async (newIndex: number, newCompletedIds: string[], completeFlag = false) => {
     try {
-      await authFetch(`/api/student/lessons/${lessonId}/session`, {
+      const res = await authFetch(`/api/student/lessons/${lessonId}/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -169,6 +175,12 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
           isCompleted: completeFlag,
         }),
       });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.nextLesson) {
+          setNextLessonInfo(json.data.nextLesson);
+        }
+      }
     } catch (e) {
       console.warn("Session sync error:", e);
     }
@@ -356,10 +368,15 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
   };
 
   const handleCompleteLesson = async () => {
-    const allIds = blocks.map((b) => b.id);
-    setCompletedBlockIds(allIds);
-    setIsCompleted(true);
-    await syncSession(activeSectionIndex, allIds, true);
+    try {
+      setCompleting(true);
+      const allIds = blocks.map((b) => b.id);
+      setCompletedBlockIds(allIds);
+      setIsCompleted(true);
+      await syncSession(activeSectionIndex, allIds, true);
+    } finally {
+      setCompleting(false);
+    }
   };
 
   const completedCount = completedBlockIds.length;
@@ -657,14 +674,39 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
 
                 <div className="flex items-center gap-2">
                   {activeSectionIndex === totalBlocks - 1 ? (
-                    <Button
-                      variant="primary"
-                      onClick={handleCompleteLesson}
-                      className="gap-2 min-h-[44px] px-6 bg-teal-600 hover:bg-teal-700"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>{isCompleted ? "View Mastery Summary" : "Complete Lesson"}</span>
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="primary"
+                        onClick={handleCompleteLesson}
+                        disabled={completing}
+                        className="gap-2 min-h-[44px] px-6 bg-teal-600 hover:bg-teal-700"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>{completing ? "Saving..." : isCompleted ? "Lesson Completed" : "Complete Lesson"}</span>
+                      </Button>
+                      {isCompleted && nextLessonInfo && (
+                        nextLessonInfo.eligible ? (
+                          <Button
+                            variant="primary"
+                            onClick={() => handleNav(`/student/lessons/${nextLessonInfo.lessonId}`)}
+                            className="gap-2 min-h-[44px] px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs"
+                          >
+                            <span>Proceed to Next: {nextLessonInfo.title}</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleNav("/student/learning-path")}
+                            className="gap-2 min-h-[44px] px-4 text-amber-700 border-amber-200 bg-amber-50"
+                            title={nextLessonInfo.lockReasons?.join(", ") || "Prerequisites required"}
+                          >
+                            <Lock className="w-4 h-4 text-amber-600" />
+                            <span className="text-xs">Next Lesson Locked • Learning Path</span>
+                          </Button>
+                        )
+                      )}
+                    </div>
                   ) : (
                     <Button
                       variant="primary"
@@ -715,14 +757,27 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
                   <h3 className="font-bold text-slate-900 text-sm">Completed All Sections?</h3>
                   <p className="text-xs text-slate-500">Record your progress and evaluate your skill mastery.</p>
                 </div>
-                <Button
-                  variant="primary"
-                  onClick={handleCompleteLesson}
-                  className="gap-2 bg-teal-600 hover:bg-teal-700 min-h-[44px]"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Mark Lesson Complete</span>
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={handleCompleteLesson}
+                    disabled={completing}
+                    className="gap-2 bg-teal-600 hover:bg-teal-700 min-h-[44px]"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{completing ? "Saving..." : isCompleted ? "Lesson Completed" : "Mark Lesson Complete"}</span>
+                  </Button>
+                  {isCompleted && nextLessonInfo?.eligible && (
+                    <Button
+                      variant="primary"
+                      onClick={() => handleNav(`/student/lessons/${nextLessonInfo.lessonId}`)}
+                      className="gap-2 min-h-[44px] px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    >
+                      <span>Proceed to Next: {nextLessonInfo.title}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -737,6 +792,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
                 skillTitle={primarySkill?.title}
                 practiceSetId={practiceSetId}
                 checkpointAttempts={attemptsMap}
+                nextLesson={nextLessonInfo}
                 onNavigate={handleNav}
                 onOpenAITutor={(ctx) => {
                   setTutorContext(ctx);
