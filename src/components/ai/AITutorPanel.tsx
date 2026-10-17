@@ -230,7 +230,7 @@ export function AITutorPanel({
         setSpeakingMessageId(null);
         setVoiceState((prev: VoiceState) => (prev === "SPEAKING" ? "IDLE" : prev));
       },
-    });
+    }, { fetcher: authFetch });
     synthesisRef.current = synthesis;
 
     return () => {

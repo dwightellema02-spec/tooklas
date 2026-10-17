@@ -144,3 +144,10 @@ export const documentUploadRateLimiter = new SlidingWindowRateLimiter({
   message: "Document upload rate limit exceeded. Please wait before uploading additional files.",
 });
 
+
+// 6. Speech Limiter: max 40 text-to-speech requests per minute per IP (each reply is read in short pieces)
+export const ttsRateLimiter = new SlidingWindowRateLimiter({
+  windowMs: 60 * 1000,
+  max: 40,
+  message: "Too many speech requests. Please wait a moment.",
+});

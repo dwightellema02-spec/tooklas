@@ -40,6 +40,8 @@ export interface SpeechSynthesisOptions {
   rate?: number;
   volume?: number;
   voiceName?: string;
+  /** "browser" forces the device voice; by default Filipino uses the natural server voice when available. */
+  engine?: "auto" | "browser";
 }
 
 export interface VoiceCapabilities {

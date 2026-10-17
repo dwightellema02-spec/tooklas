@@ -209,6 +209,40 @@ export function formatTextForSpeech(text: string): string {
 }
 
 /**
+ * Split text into pieces of at most `max` characters at sentence ends (then commas, then spaces), so a long
+ * reply can start playing after its first piece is ready instead of after the whole reply is synthesized.
+ */
+export function splitForSpeech(text: string, max = 260): string[] {
+  const pieces: string[] = [];
+  const sentences = text.replace(/\s+/g, " ").trim().match(/[^.!?;:]+[.!?;:]*\s*/g) || [];
+  let current = "";
+  const flush = () => {
+    if (current.trim()) pieces.push(current.trim());
+    current = "";
+  };
+  for (const sentence of sentences) {
+    if (sentence.length > max) {
+      flush();
+      // A very long sentence: break at commas, then at spaces.
+      let rest = sentence;
+      while (rest.length > max) {
+        let cut = rest.lastIndexOf(", ", max - 2);
+        if (cut < max * 0.4) cut = rest.lastIndexOf(" ", max - 1);
+        if (cut <= 0) cut = max - 1;
+        pieces.push(rest.slice(0, cut + 1).trim());
+        rest = rest.slice(cut + 1);
+      }
+      current = rest;
+      continue;
+    }
+    if ((current + sentence).length > max) flush();
+    current += sentence;
+  }
+  flush();
+  return pieces.filter(Boolean);
+}
+
+/**
  * Detect whether a text contains Filipino / Tagalog words or patterns
  */
 export function isFilipinoText(text: string): boolean {

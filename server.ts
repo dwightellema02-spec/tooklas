@@ -30,7 +30,9 @@ import {
   submissionRateLimiter,
   aiEndpointRateLimiter,
   documentUploadRateLimiter,
+  ttsRateLimiter,
 } from "./src/lib/rate-limiter.ts";
+import { synthesizeSpeech, isTtsEnabled, TtsError, type TtsLang } from "./src/lib/voice/gemini-tts.ts";
 import { jsonParsingErrorHandler, centralizedErrorHandler } from "./src/lib/errors.ts";
 import { safeLog } from "./src/lib/logger.ts";
 import { extractDocumentContent } from "./src/lib/documents/document-extractor.ts";
@@ -2101,6 +2103,27 @@ app.patch("/api/ai/settings", async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to update AI settings";
     return res.status(500).json({ error: message });
+  }
+});
+
+// Natural Filipino speech for the tutor (Gemini TTS). The browser falls back to its own voice on any error.
+app.post("/api/ai/tts", ttsRateLimiter.middleware(), async (req: Request, res: Response) => {
+  const session = getSessionFromRequest(req);
+  if (!session) {
+    return res.status(401).json({ error: "Please sign in." });
+  }
+  if (!isTtsEnabled()) {
+    return res.status(503).json({ error: "Natural speech is not available on this server." });
+  }
+  const text = typeof req.body?.text === "string" ? req.body.text : "";
+  const lang: TtsLang = req.body?.lang === "en-PH" ? "en-PH" : "fil-PH";
+  try {
+    const wav = await synthesizeSpeech(text, lang);
+    res.set({ "Content-Type": "audio/wav", "Cache-Control": "private, max-age=86400", "Content-Length": String(wav.length) });
+    return res.send(wav);
+  } catch (error: unknown) {
+    if (error instanceof TtsError) return res.status(error.status).json({ error: error.message });
+    return res.status(502).json({ error: "Speech generation failed." });
   }
 });
 

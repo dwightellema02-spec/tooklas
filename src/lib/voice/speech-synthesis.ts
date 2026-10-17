@@ -4,7 +4,7 @@
  */
 
 import { SpeechSynthesisOptions } from "./voice-types";
-import { formatTextForSpeech, isSpeechSynthesisSupported, isFilipinoText } from "./voice-utils";
+import { formatTextForSpeech, isSpeechSynthesisSupported, isFilipinoText, splitForSpeech } from "./voice-utils";
 
 export interface SpeechSynthesisCallbacks {
   onStart?: () => void;
@@ -14,15 +14,34 @@ export interface SpeechSynthesisCallbacks {
   onResume?: () => void;
 }
 
+/** After a 401/503 the natural-voice server is skipped for a while, so the browser voice answers at once. */
+let naturalVoiceUnavailableUntil = 0;
+
+/** Lets tests start from a clean state. */
+export function resetNaturalVoiceAvailability(): void {
+  naturalVoiceUnavailableUntil = 0;
+}
+
+export interface SpeechSynthesisControllerOptions {
+  /** Fetch used for the natural-voice server (pass authFetch so the session token is sent). */
+  fetcher?: typeof fetch;
+}
+
 export class SpeechSynthesisController {
+  private serverToken = 0;
+  private serverAudio: HTMLAudioElement | null = null;
+  private serverAbort: AbortController | null = null;
+  private serverUrls: string[] = [];
+  private fetcher: typeof fetch;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private callbacks: SpeechSynthesisCallbacks;
   private cachedVoices: SpeechSynthesisVoice[] = [];
   private voicesLoaded: boolean = false;
   private onVoicesChangedHandler: (() => void) | null = null;
 
-  constructor(callbacks: SpeechSynthesisCallbacks = {}) {
+  constructor(callbacks: SpeechSynthesisCallbacks = {}, options: SpeechSynthesisControllerOptions = {}) {
     this.callbacks = callbacks;
+    this.fetcher = options.fetcher ?? ((...args) => fetch(...args));
     this.initVoices();
   }
 
@@ -51,6 +70,7 @@ export class SpeechSynthesisController {
   }
 
   public isSpeaking(): boolean {
+    if (this.serverAudio && !this.serverAudio.paused) return true;
     if (!this.isSupported()) return false;
     return window.speechSynthesis.speaking;
   }
@@ -85,13 +105,121 @@ export class SpeechSynthesisController {
     }
 
     // Task 11: Barge-in / Interruption handling: Cancel any previous utterance immediately
-    this.stop();
+    this.halt();
 
     const spokenText = formatTextForSpeech(rawText);
     if (!spokenText.trim()) {
       return false;
     }
 
+    const isFilipino =
+      Boolean(options.lang?.startsWith("fil") || options.lang?.startsWith("tl")) ||
+      (!options.lang?.startsWith("en") && isFilipinoText(rawText));
+
+    // Filipino: use the natural server voice when there is one. Most devices have no Filipino voice and read
+    // Tagalog with an English or Indonesian one. Any failure falls back to the browser voice below.
+    if (isFilipino && !options.voiceName && options.engine !== "browser" && this.canUseNaturalVoice()) {
+      void this.speakWithNaturalVoice(spokenText, options);
+      return true;
+    }
+    return this.speakInBrowser(spokenText, options, isFilipino);
+  }
+
+  private canUseNaturalVoice(): boolean {
+    return typeof Audio !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function" && Date.now() >= naturalVoiceUnavailableUntil;
+  }
+
+  private releaseServerAudio(): void {
+    this.serverAbort?.abort();
+    this.serverAbort = null;
+    if (this.serverAudio) {
+      this.serverAudio.onended = null;
+      this.serverAudio.onerror = null;
+      try {
+        this.serverAudio.pause();
+      } catch {
+        // Ignore
+      }
+      this.serverAudio = null;
+    }
+    for (const u of this.serverUrls) URL.revokeObjectURL(u);
+    this.serverUrls = [];
+  }
+
+  private async speakWithNaturalVoice(spokenText: string, options: SpeechSynthesisOptions): Promise<void> {
+    const token = ++this.serverToken;
+    const pieces = splitForSpeech(spokenText);
+    const abort = new AbortController();
+    this.serverAbort = abort;
+    const lang = options.lang?.startsWith("en") ? "en-PH" : "fil-PH";
+
+    const fetchPiece = async (text: string): Promise<string> => {
+      const res = await this.fetcher("/api/ai/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, lang }),
+        signal: abort.signal,
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 503) naturalVoiceUnavailableUntil = Date.now() + 5 * 60 * 1000;
+        else if (res.status === 429) naturalVoiceUnavailableUntil = Date.now() + 30 * 1000;
+        throw new Error("natural voice unavailable: " + res.status);
+      }
+      const url = URL.createObjectURL(await res.blob());
+      this.serverUrls.push(url);
+      return url;
+    };
+
+    let index = 0;
+    let played = 0; // pieces that finished playing
+    let started = false;
+    try {
+      let pending = fetchPiece(pieces[0]);
+      pending.catch(() => undefined);
+      for (index = 0; index < pieces.length; index++) {
+        const url = await pending;
+        if (token !== this.serverToken) return;
+        if (index + 1 < pieces.length) {
+          pending = fetchPiece(pieces[index + 1]); // synthesize the next piece while this one plays
+          pending.catch(() => undefined);
+        }
+        await new Promise<void>((resolve, reject) => {
+          const audio = new Audio(url);
+          audio.volume = options.volume ?? 1.0;
+          audio.playbackRate = options.rate ?? 1.0;
+          this.serverAudio = audio;
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error("audio playback failed"));
+          audio.onpause = () => {
+            if (!audio.ended && token === this.serverToken && this.serverAudio === audio) this.callbacks.onPause?.();
+          };
+          audio.onplay = () => {
+            if (started) this.callbacks.onResume?.();
+          };
+          audio.play().then(() => {
+            if (!started) {
+              started = true;
+              this.callbacks.onStart?.();
+            }
+          }, reject);
+        });
+        played++;
+      }
+      if (token === this.serverToken) {
+        this.releaseServerAudio();
+        this.callbacks.onEnd?.();
+      }
+    } catch (err) {
+      if (token !== this.serverToken || abort.signal.aborted) return; // stopped or replaced: nothing to do
+      // Read the rest (or everything, if nothing was played yet) with the browser voice.
+      this.releaseServerAudio();
+      const rest = pieces.slice(played).join(" ");
+      if (rest.trim()) this.speakInBrowser(rest, options, true);
+      else this.callbacks.onEnd?.();
+    }
+  }
+
+  private speakInBrowser(spokenText: string, options: SpeechSynthesisOptions, isFilipino: boolean): boolean {
     try {
       const utterance = new SpeechSynthesisUtterance(spokenText);
       this.currentUtterance = utterance;
@@ -100,9 +228,6 @@ export class SpeechSynthesisController {
       utterance.pitch = options.pitch ?? 1.0;
       utterance.volume = options.volume ?? 1.0;
 
-      const isFilipino =
-        Boolean(options.lang?.startsWith("fil") || options.lang?.startsWith("tl")) ||
-        (!options.lang?.startsWith("en") && isFilipinoText(rawText));
       const targetLang = options.lang || (isFilipino ? "fil-PH" : "en-US");
       utterance.lang = targetLang;
 
@@ -189,6 +314,15 @@ export class SpeechSynthesisController {
    * Stop any active speech readout immediately (barge-in or manual mute)
    */
   public stop(): void {
+    const wasNatural = Boolean(this.serverAudio || this.serverAbort);
+    this.halt();
+    if (wasNatural) this.callbacks.onEnd?.(); // the browser voice reports its own end when cancelled
+  }
+
+  /** Silence everything without telling the caller (used when a new utterance replaces the old one). */
+  private halt(): void {
+    this.serverToken++;
+    this.releaseServerAudio();
     if (this.isSupported()) {
       try {
         window.speechSynthesis.cancel();
@@ -203,6 +337,7 @@ export class SpeechSynthesisController {
    * Pause active speech
    */
   public pause(): void {
+    this.serverAudio?.pause();
     if (this.isSupported()) {
       try {
         window.speechSynthesis.pause();
@@ -216,6 +351,7 @@ export class SpeechSynthesisController {
    * Resume paused speech
    */
   public resume(): void {
+    void this.serverAudio?.play();
     if (this.isSupported()) {
       try {
         window.speechSynthesis.resume();
@@ -229,7 +365,7 @@ export class SpeechSynthesisController {
    * Destroy and clean up speech synthesis
    */
   public destroy(): void {
-    this.stop();
+    this.halt();
     if (this.onVoicesChangedHandler && typeof window !== "undefined" && window.speechSynthesis?.removeEventListener) {
       window.speechSynthesis.removeEventListener("voiceschanged", this.onVoicesChangedHandler);
       this.onVoicesChangedHandler = null;
