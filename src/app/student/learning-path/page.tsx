@@ -511,7 +511,19 @@ export default function StudentLearningPathPage({ onNavigate }: StudentLearningP
               >
                 Close
               </Button>
-              {nextRecommended && (
+              {selectedLockedLesson.unlockGate?.lessonId ? (
+                <Button
+                  variant="primary"
+                  fullWidth
+                  onClick={() => {
+                    const gateLessonId = selectedLockedLesson.unlockGate.lessonId;
+                    setSelectedLockedLesson(null);
+                    handleNav(`/student/lessons/${gateLessonId}`);
+                  }}
+                >
+                  Go to the practice
+                </Button>
+              ) : nextRecommended && (
                 <Button
                   variant="primary"
                   fullWidth

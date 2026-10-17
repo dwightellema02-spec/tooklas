@@ -1,6 +1,6 @@
 import { prisma } from "../src/lib/db";
 
-const BASE_URL = `http://localhost:3000`;
+const BASE_URL = (process.env.APP_URL || "http://localhost:3000").replace(/[/]$/, "");
 
 async function runAudit() {
   console.log("=================================================================");
@@ -163,8 +163,10 @@ async function runAudit() {
       headers: { Authorization: `Bearer ${sessionToken}` },
     });
     const l2AccessDataAfter = await l2AccessAfter.json();
-    assert(l2AccessDataAfter.data?.allowed === true, "Lesson 2 is now UNLOCKED after completing Lesson 1");
-    assert(l2AccessDataAfter.data?.state === "AVAILABLE", "Lesson 2 state transitioned to AVAILABLE");
+    // Mastery gate: finishing a lesson that ends with practice is not enough. The next lesson opens once its
+    // skill reaches DEVELOPING (see scripts/test-mastery-gate.ts for the unlock itself).
+    assert(l2AccessDataAfter.data?.allowed === false, "Lesson 2 stays LOCKED until Lesson 1 has been practised");
+    assert(/practi[sc]e/i.test(l2AccessDataAfter.data?.reason || ""), "The lock tells the student to practise Lesson 1's skill");
 
     // Check Lesson 3 remains locked until Lesson 2 is completed
     const l3Access = await fetch(`${BASE_URL}/api/student/lessons/lsn_03/access`, {

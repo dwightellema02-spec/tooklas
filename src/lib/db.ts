@@ -2428,8 +2428,41 @@ export const dbService = {
       }
     });
 
+    // Mastery gate: a lesson that ends with practice must be practised to DEVELOPING (5+ attempts, 60%+
+    // accuracy, as the mastery engine decides) before the next lesson opens. MASTERY_GATE=off disables it.
+    const masteryGateOn = process.env.MASTERY_GATE !== "off";
+    const masteryBySkill = new Map<string, { status: string; attempts: number; accuracy: number }>();
+    if (masteryGateOn && hasValidDatabaseUrl) {
+      try {
+        const rows = await prisma.skillMastery.findMany({ where: { studentId: userId } });
+        for (const r of rows) masteryBySkill.set(r.skillId, { status: r.status, attempts: r.attemptCount, accuracy: r.accuracy });
+      } catch (err) {
+        console.warn("Failed to read skill mastery for the mastery gate:", err);
+      }
+    }
+    const reachedDeveloping = (s?: { status: string }) => !!s && ["DEVELOPING", "PROFICIENT", "MASTERED"].includes(s.status);
+    if (masteryGateOn && hasValidDatabaseUrl) {
+      // The stored mastery row is refreshed in the background after a practice set, so it can lag. For the
+      // one lesson that is next in line, evaluate the skill now from the student's actual attempts.
+      for (let i = 1; i < publishedLessons.length; i++) {
+        const prev = publishedLessons[i - 1];
+        if (!completedLessonIds.has(prev.id) || !prev.contentBlocks?.some((b: any) => b.type === "PRACTICE")) continue;
+        for (const sk of ((prev.skills || []) as any[]).map((s) => s.skill).filter(Boolean)) {
+          if (reachedDeveloping(masteryBySkill.get(sk.id))) continue;
+          try {
+            const { MasteryEngine } = await import("@/lib/mastery/mastery-engine");
+            const m = await MasteryEngine.evaluateSkillMastery({ studentId: userId, skillId: sk.id, forceRecalculate: true });
+            masteryBySkill.set(sk.id, { status: m.status, attempts: m.attemptCount, accuracy: m.accuracy });
+          } catch (err) {
+            console.warn("Mastery gate could not evaluate skill", sk.id, err);
+          }
+        }
+      }
+    }
+
     // Determine state for each lesson
     const pathNodes = publishedLessons.map((lesson, idx) => {
+      let unlockGate: { lessonId: string; lessonTitle: string; skillTitle: string; attempts: number; accuracy: number } | null = null;
       const prog = progressMap.get(lesson.id);
       let state: "COMPLETED" | "IN_PROGRESS" | "AVAILABLE" | "LOCKED" = "LOCKED";
       let isLocked = false;
@@ -2474,6 +2507,19 @@ export const dbService = {
       if (previousLesson && !completedLessonIds.has(previousLesson.id)) {
         isLocked = true;
         lockReasons.push(`Requires completion of "${previousLesson.title}"`);
+      } else if (previousLesson && masteryGateOn && previousLesson.contentBlocks?.some((b: any) => b.type === "PRACTICE")) {
+        const skillRows = ((previousLesson.skills || []) as any[]).map((s) => s.skill).filter(Boolean);
+        const unmet = skillRows.find((sk) => !reachedDeveloping(masteryBySkill.get(sk.id)));
+        if (unmet) {
+          const m = masteryBySkill.get(unmet.id);
+          const attempts = m?.attempts ?? 0;
+          const accuracy = Math.round((m?.accuracy ?? 0) * 100);
+          isLocked = true;
+          unlockGate = { lessonId: previousLesson.id, lessonTitle: previousLesson.title, skillTitle: unmet.title, attempts, accuracy };
+          lockReasons.push(
+            `Practice "${unmet.title}" first: answer at least 5 practice questions with 60% or more correct. So far: ${attempts} answered, ${accuracy}% correct.`
+          );
+        }
       }
 
       // The very first lesson in the path is never locked
@@ -2520,6 +2566,7 @@ export const dbService = {
         status: lesson.status,
         state,
         lockReasons: state === "LOCKED" ? lockReasons : [],
+        unlockGate: state === "LOCKED" ? unlockGate : null,
         progressPercentage: prog?.progressPercentage || 0,
         startedAt: prog?.startedAt,
         completedAt: prog?.completedAt,
@@ -2660,6 +2707,7 @@ export const dbService = {
           node.lockReasons.length > 0
             ? node.lockReasons[0]
             : "Complete the required previous lesson first.",
+        gate: node.unlockGate ?? null,
         state: "LOCKED" as const,
         canonicalLessonId,
       };

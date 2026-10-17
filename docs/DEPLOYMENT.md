@@ -58,6 +58,8 @@ Set these in the host's dashboard. Never commit real values.
    npx tsx scripts/seed-q1-question-bank.ts --apply
    ```
    It adds, for each of the 20 lessons, one skill, 18 questions in three practice sets (guided, mixed, challenge), and a quiz for each week. Questions are checked by code before they are written, and practice sets stay hidden from students until their lesson is published. Re-running it never overwrites a teacher's edits.
+
+   **Mastery gate.** A student opens the next lesson only after finishing the lesson before it (Budget of Work order) AND reaching DEVELOPING on its skill: at least 5 practice answers with 60% or more correct, as the mastery engine decides. Lessons that do not end with practice are not gated. Students who already started a lesson keep access to it. To switch the gate off for a pilot, set `MASTERY_GATE=off`; to check it, run `APP_URL=... npx tsx scripts/test-mastery-gate.ts`.
 6. **Rotate the Gemini key** if it has ever been in a shared file or chat, and set a quota alert.
 7. **Review the privacy side.** The site stores student names, emails and learning records. Add the
    school's privacy notice and parent or guardian consent process before real students sign up

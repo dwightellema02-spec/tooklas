@@ -418,7 +418,12 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
             </>
           ) : (
             <>
-              <Button variant="primary" fullWidth onClick={() => handleNav("/student/learning-path")}>
+              {access.gate?.lessonId && (
+                <Button variant="primary" fullWidth onClick={() => handleNav(`/student/lessons/${access.gate.lessonId}`)}>
+                  <span>Go to the practice for &ldquo;{access.gate.skillTitle}&rdquo;</span>
+                </Button>
+              )}
+              <Button variant={access.gate?.lessonId ? "outline" : "primary"} fullWidth onClick={() => handleNav("/student/learning-path")}>
                 <span>View Learning Path Roadmap</span>
               </Button>
               <Button variant="ghost" fullWidth onClick={() => handleNav("/student")}>
