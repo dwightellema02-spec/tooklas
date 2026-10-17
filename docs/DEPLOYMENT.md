@@ -20,7 +20,7 @@ Set these in the host's dashboard. Never commit real values.
 | `AUTH_SECRET` | yes | At least 32 random characters, unique to this deployment. Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `APP_URL` | yes | The public `https://` address. Used by the cross-site request check. |
 | `GEMINI_API_KEY` | no | Without it the tutor uses its built-in rule-based engine. |
-| `AI_TTS`, `AI_TTS_MODEL`, `AI_TTS_VOICE` | no | Natural Filipino voice for the tutor (Gemini TTS, same key). `AI_TTS=off` turns it off. Defaults: model `gemini-3.8-flash-tts`, voice `Kore`. |
+| `AI_TTS`, `AI_TTS_MODEL`, `AI_TTS_VOICE` | no | Natural Filipino voice for the tutor (Gemini TTS, same key). `AI_TTS=off` turns it off. Defaults: model `gemini-2.5-flash-preview-tts` (the newer `gemini-3.8-*-tts` models are tried if it fails, but they speak too slowly with the current style instructions), voice `Aoede`. |
 | `AI_MODEL` | no | Check the model name in your Google AI account. If it is rejected the app falls back automatically. |
 | `YOUTUBE_API_KEY` | no | Without it video search uses the built-in Mathisipan catalog. |
 | `PORT` | no | The host usually sets it. |

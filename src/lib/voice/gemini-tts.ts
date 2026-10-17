@@ -23,6 +23,8 @@ const STYLE: Record<TtsLang, string> = {
 };
 
 export const TTS_MAX_CHARS = 600;
+const DEFAULT_VOICE = "Aoede";
+const ttsVoice = () => process.env.AI_TTS_VOICE || DEFAULT_VOICE;
 const CACHE_MAX_BYTES = 80 * 1024 * 1024;
 
 const cache = new Map<string, Buffer>();
@@ -37,7 +39,7 @@ export function isTtsEnabled(): boolean {
 }
 
 function models(): string[] {
-  const list = [process.env.AI_TTS_MODEL, "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-2.5-flash-preview-tts"];
+  const list = [process.env.AI_TTS_MODEL, "gemini-2.5-flash-preview-tts", "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"];
   return list.filter((m, i): m is string => Boolean(m) && list.indexOf(m) === i);
 }
 
@@ -86,7 +88,7 @@ async function generate(text: string, lang: TtsLang): Promise<Buffer> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
   if (!apiKey) throw new TtsError("Speech is not configured.", 503);
   client ??= new GoogleGenAI({ apiKey });
-  const voice = process.env.AI_TTS_VOICE || "Kore";
+  const voice = ttsVoice();
   let lastStatus = 502;
   let lastMessage = "Speech generation failed.";
   for (const model of models()) {
@@ -124,7 +126,7 @@ export async function synthesizeSpeech(text: string, lang: TtsLang): Promise<Buf
   const clean = text.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
   if (!clean) throw new TtsError("Nothing to read.", 400);
   if (clean.length > TTS_MAX_CHARS) throw new TtsError(`Text is too long (max ${TTS_MAX_CHARS} characters).`, 413);
-  const key = createHash("sha256").update([models()[0], process.env.AI_TTS_VOICE || "Kore", lang, clean].join("\u0001")).digest("hex");
+  const key = createHash("sha256").update([models()[0], ttsVoice(), lang, clean].join("\u0001")).digest("hex");
   const hit = cache.get(key);
   if (hit) {
     cache.delete(key);
