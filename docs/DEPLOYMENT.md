@@ -47,6 +47,11 @@ Set these in the host's dashboard. Never commit real values.
    ```
    On a new database it also creates Mathematics, Grade 7 and Terms 1 to 3. The 20 Term 1 lessons (Weeks 1 to 7, one lesson per sub-topic) arrive as DRAFT, with their supporting videos and teacher-reference PDFs. Re-running it later adds new videos and lessons without touching lessons a teacher has already moved forward. A teacher reviews them, sends them to review, an administrator
    approves, and then they are published. Students never see drafts.
+
+   The lessons arrive with their illustrations (SVG files in `public/illustrations`, shipped with the app) and
+   a few interactive explorers. A database that already holds the lessons from an earlier run gets them with
+   `npx tsx scripts/seed-lesson-figures.ts --apply`, which never deletes anything or changes student progress.
+   To redraw the pictures after editing `scripts/generate-illustrations.ts`, run it and commit the SVGs.
 5. **Load the skills and the practice question bank** (check it first with `--validate`, then a dry run, then `--apply`):
    ```bash
    npx tsx scripts/seed-q1-question-bank.ts --validate

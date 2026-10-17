@@ -10,8 +10,12 @@
  * are seeded as DRAFT for teacher review.
  */
 
+import { LESSON_EXPLORERS, LESSON_FIGURES } from "./g7-q1-figures.ts";
+
 export interface DraftBlock {
-  type: "TEXT" | "EXAMPLE" | "CHECKPOINT" | "SUMMARY";
+  /** Set for blocks added after the first release (figures), so their ids never change when blocks move. */
+  id?: string;
+  type: "TEXT" | "EXAMPLE" | "CHECKPOINT" | "SUMMARY" | "IMAGE" | "INTERACTIVE";
   title: string;
   content: string;
   metadata?: Record<string, unknown>;
@@ -98,6 +102,31 @@ function buildLesson(spec: LessonSpec): DraftLesson {
       );
     }
   });
+  // Illustrations: each figure goes right after the block it is anchored to, in the order they are listed.
+  for (const f of LESSON_FIGURES[spec.id] ?? []) {
+    let at = blocks.findIndex((b) => b.title === f.after);
+    if (at < 0) throw new Error(`${spec.id}: figure "${f.file}" is anchored to "${f.after}", which is not a block of this lesson`);
+    while (blocks[at + 1]?.id !== undefined) at++;
+    blocks.splice(at + 1, 0, {
+      id: `${spec.id}_fig_${f.file}`,
+      type: "IMAGE",
+      title: f.title,
+      content: f.caption,
+      metadata: { url: `/illustrations/${f.file}.svg`, alt: f.alt, caption: f.caption },
+    });
+  }
+  for (const x of LESSON_EXPLORERS[spec.id] ?? []) {
+    let at = blocks.findIndex((b) => b.title === x.after);
+    if (at < 0) throw new Error(`${spec.id}: explorer "${x.slug}" is anchored to "${x.after}", which is not a block of this lesson`);
+    while (blocks[at + 1]?.id !== undefined) at++;
+    blocks.splice(at + 1, 0, {
+      id: `${spec.id}_exp_${x.slug}`,
+      type: "INTERACTIVE",
+      title: x.title,
+      content: x.hint,
+      metadata: x.metadata,
+    });
+  }
   return {
     ...rest,
     estimatedMinutes: days.length * MINUTES_PER_DAY,

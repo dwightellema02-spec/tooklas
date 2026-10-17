@@ -6,6 +6,7 @@ import { VideoBlock } from "./blocks/VideoBlock";
 import { ExampleBlock } from "./blocks/ExampleBlock";
 import { QuestionBlock } from "./blocks/QuestionBlock";
 import { InteractiveBlock } from "./blocks/InteractiveBlock";
+import { ExplorerBlock, EXPLORER_MODELS } from "./interactive/LessonExplorers";
 import { HintBlock } from "./blocks/HintBlock";
 import { CheckpointBlock, type CheckpointResult } from "./blocks/CheckpointBlock";
 import { PracticeBlock } from "./blocks/PracticeBlock";
@@ -69,7 +70,16 @@ export function ContentBlockRenderer({
         />
       );
 
-    case "INTERACTIVE":
+    case "INTERACTIVE": {
+      let model: string | undefined;
+      try {
+        model = block.metadata ? JSON.parse(block.metadata)?.model : undefined;
+      } catch {
+        model = undefined;
+      }
+      if (model && (EXPLORER_MODELS as readonly string[]).includes(model)) {
+        return <ExplorerBlock title={block.title} content={block.content} metadata={block.metadata} onComplete={onComplete} />;
+      }
       return (
         <InteractiveBlock
           title={block.title}
@@ -79,6 +89,7 @@ export function ContentBlockRenderer({
           readOnly={readOnly}
         />
       );
+    }
 
     case "HINT":
       return <HintBlock title={block.title} content={block.content} />;

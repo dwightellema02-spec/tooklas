@@ -250,7 +250,7 @@ async function main() {
             });
             await tx.lessonContentBlock.createMany({
               data: l.blocks.map((b, i) => ({
-                id: `${l.id}_b${String(i + 1).padStart(2, "0")}`,
+                id: b.id ?? `${l.id}_b${String(i + 1).padStart(2, "0")}`,
                 lessonId: l.id,
                 type: b.type,
                 sequenceOrder: i + 1,
@@ -274,7 +274,7 @@ async function main() {
             await tx.lessonContentBlock.deleteMany({ where: { lessonId: l.id } });
             await tx.lessonContentBlock.createMany({
               data: l.blocks.map((b, i) => ({
-                id: `${l.id}_b${String(i + 1).padStart(2, "0")}`,
+                id: b.id ?? `${l.id}_b${String(i + 1).padStart(2, "0")}`,
                 lessonId: l.id,
                 type: b.type,
                 sequenceOrder: i + 1,
