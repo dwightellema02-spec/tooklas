@@ -17,9 +17,9 @@ export class TtsError extends Error {
 
 const STYLE: Record<TtsLang, string> = {
   "fil-PH":
-    "Read the text below aloud, exactly as written and nothing else. Speak as a warm, patient Filipino mathematics teacher: clear, natural Tagalog with an authentic Philippine accent, at a calm classroom pace. Say English math terms the way Filipinos naturally say them in class.",
+    "Read the text below aloud, exactly as written and nothing else. Speak like a warm, friendly Filipino mathematics tutor talking with a student: natural, relaxed, conversational Tagalog with an authentic Philippine accent, with varied, expressive intonation, never flat or robotic, at a natural conversational speed (not slow, not rushed) without long pauses. Say English math terms the way Filipinos naturally say them in class.",
   "en-PH":
-    "Read the text below aloud, exactly as written and nothing else. Speak as a warm, patient Filipino mathematics teacher in clear English with a natural Philippine accent, at a calm classroom pace.",
+    "Read the text below aloud, exactly as written and nothing else. Speak like a warm, friendly Filipino mathematics tutor talking with a student: natural, relaxed, conversational English with a light Philippine accent, with varied, expressive intonation, never flat or robotic, at a natural conversational speed (not slow, not rushed) without long pauses.",
 };
 
 export const TTS_MAX_CHARS = 600;
@@ -67,9 +67,9 @@ function wavSeconds(wav: Buffer): number {
   return (wav.length - 44) / 2 / (rate || 24000);
 }
 
-/** Speech runs about 12 to 15 characters per second. Much longer audio means the model rambled or hung on silence. */
+/** Speech runs about 12 to 15 characters per second (never below about 8). Much longer audio means the model rambled or hung on silence. */
 export function isPlausibleSpeech(text: string, wav: Buffer): boolean {
-  return wav.length > 1000 && wavSeconds(wav) <= text.length * 0.2 + 4;
+  return wav.length > 1000 && wavSeconds(wav) <= text.length * 0.12 + 3;
 }
 
 function remember(key: string, wav: Buffer) {
@@ -89,10 +89,7 @@ async function generate(text: string, lang: TtsLang): Promise<Buffer> {
   const voice = process.env.AI_TTS_VOICE || "Kore";
   let lastStatus = 502;
   let lastMessage = "Speech generation failed.";
-  const tries = models().flatMap((m) => [{ m, attempt: 0 }, { m, attempt: 1 }]);
-  let skip = "";
-  for (const { m: model } of tries) {
-    if (skip === model) continue;
+  for (const model of models()) {
     try {
       const res = await client.models.generateContent({
         model,
@@ -109,14 +106,13 @@ async function generate(text: string, lang: TtsLang): Promise<Buffer> {
         console.warn(`[tts] ${model} returned ${wavSeconds(wav).toFixed(1)}s of audio for ${text.length} characters; discarded`);
         lastMessage = "Speech generation failed.";
         lastStatus = 502;
-        continue; // once more on the same model, then on the next one
+        continue; // the same model tends to repeat itself, so go to the next one
       }
       return wav;
     } catch (err: any) {
       const raw = String(err?.message || err);
       lastStatus = /429|quota|RESOURCE_EXHAUSTED/i.test(raw) ? 429 : 502;
       lastMessage = lastStatus === 429 ? "Speech is busy right now. Please try again in a moment." : "Speech generation failed.";
-      skip = model; // a quota or API error will not fix itself on an immediate retry; go to the next model
       console.warn(`[tts] ${model} failed (${lastStatus}):`, raw.slice(0, 160));
     }
   }

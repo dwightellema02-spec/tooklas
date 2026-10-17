@@ -56,14 +56,15 @@ function make(fetcher: (...a: any[]) => Promise<Response>) {
   t("start and end are each reported once", ev.start === 1 && ev.end === 1, JSON.stringify(ev));
 }
 
-// 3. English is never sent to the Filipino voice server
+// 3. English also uses the natural voice, asked for as Philippine English
 {
-  let fetches = 0;
-  const { c } = make(async () => { fetches++; return wav(); });
+  const langs: string[] = [];
+  const { c } = make(async (_u, init) => { langs.push(JSON.parse(init.body).lang); return wav(); });
   spoken.length = 0;
   c.speak("Let us study the angles of a polygon.", { lang: "en-US" });
   await tick(20);
-  t("English text uses the device voice, not the server", fetches === 0 && spoken.length === 1);
+  await tick(40);
+  t("English text uses the natural voice (en-PH) and not the device voice", langs.length === 1 && langs[0] === "en-PH" && spoken.length === 0, JSON.stringify({ langs, spoken: spoken.length }));
 }
 
 // 4. engine "browser" forces the device voice

@@ -69,7 +69,7 @@ Set these in the host's dashboard. Never commit real values.
 
 ## Tagalog voice
 
-Most devices have no Filipino voice installed, so the browser reads Tagalog with an English or Indonesian voice. When `GEMINI_API_KEY` is set, the tutor asks the server for natural Filipino speech (`POST /api/ai/tts`, signed-in users only, 40 requests a minute per address). Long replies are read in short pieces so sound starts after the first one, and identical text is served from memory. If the server cannot speak (no key, over quota, offline) the browser voice reads it instead, so the tutor never goes silent.
+Most devices have no Filipino voice installed, so the browser reads Tagalog with an English or Indonesian voice. When `GEMINI_API_KEY` is set, the tutor asks the server for natural speech, in Filipino and in English (Philippine accent) (`POST /api/ai/tts`, signed-in users only, 40 requests a minute per address). Long replies are read in short pieces so sound starts after the first one, and identical text is served from memory. If the server cannot speak (no key, over quota, offline) the browser voice reads it instead, so the tutor never goes silent.
 
 **Quota matters.** A free Gemini key allows only a handful of requests a day per model, shared with the tutor itself. A class using the voice needs a paid key (billing enabled on the Google AI project). Check `scripts/test-tts-natural-voice.ts` and `scripts/test-natural-voice-controller.ts` after changing voice settings; only a person listening can judge accent and fluency.
 

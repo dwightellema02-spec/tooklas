@@ -116,10 +116,11 @@ export class SpeechSynthesisController {
       Boolean(options.lang?.startsWith("fil") || options.lang?.startsWith("tl")) ||
       (!options.lang?.startsWith("en") && isFilipinoText(rawText));
 
-    // Filipino: use the natural server voice when there is one. Most devices have no Filipino voice and read
-    // Tagalog with an English or Indonesian one. Any failure falls back to the browser voice below.
-    if (isFilipino && !options.voiceName && options.engine !== "browser" && this.canUseNaturalVoice()) {
-      void this.speakWithNaturalVoice(spokenText, options);
+    // Use the natural server voice when there is one, for Filipino and for English. Most devices have no
+    // Filipino voice (Tagalog comes out in an English or Indonesian accent) and the built-in English voices
+    // sound robotic. Any failure falls back to the browser voice below.
+    if (!options.voiceName && options.engine !== "browser" && this.canUseNaturalVoice()) {
+      void this.speakWithNaturalVoice(spokenText, options, isFilipino);
       return true;
     }
     return this.speakInBrowser(spokenText, options, isFilipino);
@@ -146,12 +147,12 @@ export class SpeechSynthesisController {
     this.serverUrls = [];
   }
 
-  private async speakWithNaturalVoice(spokenText: string, options: SpeechSynthesisOptions): Promise<void> {
+  private async speakWithNaturalVoice(spokenText: string, options: SpeechSynthesisOptions, isFilipino: boolean): Promise<void> {
     const token = ++this.serverToken;
     const pieces = splitForSpeech(spokenText);
     const abort = new AbortController();
     this.serverAbort = abort;
-    const lang = options.lang?.startsWith("en") ? "en-PH" : "fil-PH";
+    const lang = isFilipino ? "fil-PH" : "en-PH";
 
     const fetchPiece = async (text: string): Promise<string> => {
       const res = await this.fetcher("/api/ai/tts", {
@@ -214,7 +215,7 @@ export class SpeechSynthesisController {
       // Read the rest (or everything, if nothing was played yet) with the browser voice.
       this.releaseServerAudio();
       const rest = pieces.slice(played).join(" ");
-      if (rest.trim()) this.speakInBrowser(rest, options, true);
+      if (rest.trim()) this.speakInBrowser(rest, options, isFilipino);
       else this.callbacks.onEnd?.();
     }
   }
