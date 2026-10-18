@@ -1387,6 +1387,16 @@ app.post(["/api/student/lessons/:id/checkpoint", "/api/student/lessons/:id/check
       feedback,
     });
 
+    // A wrong checkpoint answer is evidence too: refresh the student's mistake analysis in the background.
+    if (!isCorrect && session.role === "STUDENT") {
+      const skillId = lesson?.skills?.[0]?.skillId || lesson?.skills?.[0]?.skill?.id;
+      if (skillId) {
+        MistakeAnalyzerService.analyzeStudentMistakes({ studentId: userId, skillId, lessonId: id, trigger: "N_NEW_ATTEMPTS" }).catch((err) =>
+          console.warn("Background checkpoint analysis error:", err)
+        );
+      }
+    }
+
     return res.json({ data: attempt, result: { isCorrect, feedback, correctAnswer } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to record checkpoint attempt";
@@ -2018,6 +2028,7 @@ app.post("/api/ai/tutor", aiEndpointRateLimiter.middleware(), async (req: Reques
       studentQuery,
       helpLevel,
       studentAnswer,
+      blockId,
     } = req.body;
 
     const result = await AITutorService.interact({
@@ -2030,6 +2041,7 @@ app.post("/api/ai/tutor", aiEndpointRateLimiter.middleware(), async (req: Reques
       studentQuery,
       helpLevel,
       studentAnswer,
+      blockId: typeof blockId === "string" && blockId.length <= 100 ? blockId : undefined,
     });
 
     return res.json({ data: result });

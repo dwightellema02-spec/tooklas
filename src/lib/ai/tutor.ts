@@ -5,6 +5,7 @@ import { buildAITutorContext } from "./context";
 import { buildTutorSystemPrompt, buildTutorUserPrompt } from "./prompts";
 import { getAIProvider, LocalTutorEngine } from "./provider";
 import { validateTutorOutput } from "./validators";
+import { MistakeAnalyzerService } from "./mistake-analyzer";
 import type {
   AITutorInteractParams,
   TutorAPIResponse,
@@ -106,6 +107,13 @@ export class AITutorService {
         role: "STUDENT",
         content: studentQuery.trim(),
         messageType: "QUESTION",
+        metadata: JSON.stringify({
+          questionId: params.questionId || null,
+          blockId: params.blockId || null,
+          lessonId: params.lessonId || null,
+          skillId: params.skillId || null,
+          studentAnswer: params.studentAnswer === undefined || params.studentAnswer === null ? null : String(params.studentAnswer).slice(0, 200),
+        }),
       });
     }
 
@@ -127,9 +135,10 @@ export class AITutorService {
       rawResponse = await provider.generateTutorResponse({
         systemPrompt,
         userPrompt,
-        maxTokens: 500,
+        maxTokens: 1500,
         temperature: 0.3,
-        timeoutMs: 16000,
+        timeoutMs: 20000,
+        context,
       });
     } catch (providerError) {
       console.warn("Primary AI provider failed, activating local pedagogical engine fallback:", providerError);
@@ -138,6 +147,7 @@ export class AITutorService {
         systemPrompt,
         userPrompt,
         maxTokens: 500,
+        context,
       });
     }
 
@@ -162,9 +172,22 @@ export class AITutorService {
         sourceGrounding: structured.sourceGrounding,
         provider: rawResponse.provider,
         model: rawResponse.model,
+        replacedBy: structured.fallbackReason || null,
         latencyMs: Date.now() - startTime,
       }),
     });
+
+    // 10b. If the student wrote out a step that does not compute, that is evidence worth keeping: refresh the
+    // mistake analysis in the background so the next hint and the teacher both see it.
+    const analysisSkillId = params.skillId || context.skill?.id;
+    if (analysisSkillId && (context.studentWork?.arithmeticSlips.length ?? 0) > 0) {
+      MistakeAnalyzerService.analyzeStudentMistakes({
+        studentId,
+        skillId: analysisSkillId,
+        lessonId: params.lessonId || context.lesson?.id,
+        trigger: "N_NEW_ATTEMPTS",
+      }).catch((err) => console.warn("Background analysis after tutor turn failed:", err));
+    }
 
     // 11. Record hint usage on QuestionAttempt for research analytics
     if (questionId) {
@@ -187,8 +210,9 @@ export class AITutorService {
         createdAt: new Date(savedTutorMessage.createdAt).toISOString(),
       },
       providerInfo: {
-        provider: rawResponse.provider,
-        model: rawResponse.model,
+        // When the model's reply was replaced by the built-in tutor, say so instead of naming the model.
+        provider: structured.fallbackReason ? "local-pedagogical-engine" : rawResponse.provider,
+        model: structured.fallbackReason ? "built-in (replaced " + rawResponse.provider + ": " + structured.fallbackReason + ")" : rawResponse.model,
       },
       rateLimit: {
         remaining: rateLimit.remaining,

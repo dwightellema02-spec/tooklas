@@ -231,6 +231,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
 
   // Socratic AI Tutor trigger from question / checkpoint
   const handleAskAITutorFromBlock = (ctx: {
+    blockId?: string;
     questionPrompt: string;
     studentAnswer?: string;
     explanation?: string;
@@ -240,6 +241,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
       lessonTitle: lesson?.title,
       skillId: lesson?.skills?.[0]?.skill?.id,
       skillTitle: lesson?.skills?.[0]?.skill?.title,
+      blockId: ctx.blockId,
       questionPrompt: ctx.questionPrompt,
       studentAnswer: ctx.studentAnswer,
       explanation: ctx.explanation,
@@ -543,6 +545,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
                   lessonTitle: lesson.title,
                   skillId: primarySkill?.id,
                   skillTitle: primarySkill?.title,
+                  blockId: currentBlock?.id,
                 });
                 setIsAITutorOpen(true);
               }}
@@ -904,6 +907,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
             lessonTitle: lesson.title,
             skillId: primarySkill?.id,
             skillTitle: primarySkill?.title,
+            blockId: currentBlock?.id,
           }
         }
         initialHelpLevel="CONCEPT_EXPLANATION"

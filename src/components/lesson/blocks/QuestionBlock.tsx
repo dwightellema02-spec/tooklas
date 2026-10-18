@@ -12,7 +12,7 @@ export interface QuestionBlockProps {
   /** Submits the answer to the server, which grades it. Without it (teacher preview) the answer is graded locally. */
   onAttempt?: (blockId: string, answer: string) => Promise<CheckpointResult | null>;
   previousAttempt?: { answer: string; isCorrect: boolean; feedback?: string };
-  onAskAITutor?: (ctx: { questionPrompt: string; studentAnswer?: string; explanation?: string }) => void;
+  onAskAITutor?: (ctx: { blockId?: string; questionPrompt: string; studentAnswer?: string; explanation?: string }) => void;
   readOnly?: boolean;
 }
 
@@ -87,6 +87,7 @@ export function QuestionBlock({
   const handleLaunchTutor = () => {
     if (onAskAITutor) {
       onAskAITutor({
+        blockId,
         questionPrompt: question,
         studentAnswer: selectedAnswer,
         explanation: explanation,

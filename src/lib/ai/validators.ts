@@ -8,6 +8,11 @@ import type {
   MistakeCategoryType,
 } from "./types";
 import { isFilipinoText } from "../voice/voice-utils";
+import { isIntegerContext, revealsExpectedAnswer, socraticResponse } from "./socratic-engine";
+import { parseModelJson } from "./json-repair";
+
+const VALID_ISSUES = ["SIGN_ERROR", "CALCULATION_ERROR", "CONCEPTUAL_MISUNDERSTANDING", "PREREQUISITE_GAP", "CONFUSION", "NONE"];
+const VALID_ACTIONS = ["CONTINUE_LESSON", "TRY_SIMILAR", "TRY_EASIER", "TRY_HARDER", "REVIEW_CONCEPT", "REVIEW_PREREQUISITE", "PRACTICE", "RETRY", "ASK_TEACHER"];
 
 const VALID_RESPONSE_TYPES: AITutorMessageType[] = [
   "QUESTION",
@@ -30,9 +35,23 @@ const FORBIDDEN_LEAK_PATTERNS = [
   /DATABASE_URL/i,
 ];
 
+/**
+ * Checks a model reply before a student sees it. Besides cleaning it up, it refuses any reply that states the
+ * final answer of a question the student has not answered correctly, and replaces it with a safe guiding reply.
+ */
 export function validateTutorOutput(rawText: string, context: AITutorContext): StructuredTutorResponse {
+  const result = validateTutorOutputCore(rawText, context);
+  const everything = [result.message, result.guidingQuestion, result.nextStep, result.encouragement].filter(Boolean).join(" ");
+  if (revealsExpectedAnswer(everything, context)) {
+    console.warn("Tutor reply withheld: it stated the final answer of an unanswered question.");
+    return generateFallbackTutorResponse(context, { avoidAnswer: true, reason: "revealed_answer" });
+  }
+  return result;
+}
+
+function validateTutorOutputCore(rawText: string, context: AITutorContext): StructuredTutorResponse {
   if (!rawText || typeof rawText !== "string" || rawText.trim().length === 0) {
-    return generateFallbackTutorResponse(context);
+    return generateFallbackTutorResponse(context, { reason: "empty_reply" });
   }
 
   // 1. Check for sensitive pattern leakage
@@ -63,14 +82,10 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
   }
 
   try {
-    let parsed: any;
-    try {
-      parsed = JSON.parse(jsonString);
-    } catch {
-      // Repair unescaped LaTeX backslashes in JSON strings (e.g., \frac, \dots, \-, \times)
-      const repairedJson = jsonString.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, "\\\\");
-      parsed = JSON.parse(repairedJson);
-    }
+    // Repairs unescaped LaTeX backslashes in JSON strings (e.g. \frac, \text, \times, \dots), including the commands
+    // that JSON would otherwise read as a tab, a form feed or a newline.
+    const parsed: any = parseModelJson(jsonString);
+    if (parsed === null) throw new Error("not valid JSON");
 
     if (parsed && typeof parsed === "object") {
       let responseType: AITutorMessageType = "HINT";
@@ -92,26 +107,29 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
           ? sanitizeMessage(parsed.guidingQuestion.trim())
           : undefined;
 
-      const hintLevel = typeof parsed.hintLevel === "number" ? parsed.hintLevel : 1;
+      const hintLevel =
+        typeof parsed.hintLevel === "number" && Number.isFinite(parsed.hintLevel) ? Math.min(3, Math.max(1, Math.round(parsed.hintLevel))) : 1;
       const encouragement =
         typeof parsed.encouragement === "string"
           ? sanitizeMessage(parsed.encouragement.trim())
           : (context.requestedLanguage === "fil" ? "Kaya mo iyan!" : "You can do this!");
       const nextStep = typeof parsed.nextStep === "string" ? sanitizeMessage(parsed.nextStep.trim()) : undefined;
-      const detectedIssue = typeof parsed.detectedIssue === "string" ? sanitizeMessage(parsed.detectedIssue.trim()) : undefined;
-      const suggestedAction = typeof parsed.suggestedAction === "string" ? sanitizeMessage(parsed.suggestedAction.trim()) : undefined;
+      const issueRaw = typeof parsed.detectedIssue === "string" ? parsed.detectedIssue.trim().toUpperCase() : "";
+      const actionRaw = typeof parsed.suggestedAction === "string" ? parsed.suggestedAction.trim().toUpperCase() : "";
+      const detectedIssue = VALID_ISSUES.includes(issueRaw) ? issueRaw : undefined;
+      const suggestedAction = VALID_ACTIONS.includes(actionRaw) ? actionRaw : undefined;
       const sourceGrounding = Array.isArray(parsed.sourceGrounding)
         ? parsed.sourceGrounding.map((s: any) => String(s).slice(0, 100))
         : undefined;
 
       // If Tagalog/Filipino was requested, verify that the message is in Filipino; if not, use localized fallback
       if (context.requestedLanguage === "fil" && !isFilipinoText(message)) {
-        return generateFallbackTutorResponse(context);
+        return generateFallbackTutorResponse(context, { reason: "wrong_language" });
       }
 
       // If English was requested, verify that the message is in English; if it is Filipino, use localized fallback
       if (context.requestedLanguage === "en" && isFilipinoText(message)) {
-        return generateFallbackTutorResponse(context);
+        return generateFallbackTutorResponse(context, { reason: "wrong_language" });
       }
 
       return {
@@ -161,7 +179,7 @@ export function validateTutorOutput(rawText: string, context: AITutorContext): S
     }
   }
 
-  return generateFallbackTutorResponse(context);
+  return generateFallbackTutorResponse(context, { reason: "unreadable_reply" });
 }
 
 function sanitizeMessage(text: string): string {
@@ -171,7 +189,28 @@ function sanitizeMessage(text: string): string {
     .slice(0, 2000); // Cost/DoS safeguard: limit single message length
 }
 
-export function generateFallbackTutorResponse(context: AITutorContext): StructuredTutorResponse {
+/** The built-in reply used when a model reply is missing, unreadable, in the wrong language or gave the answer away. */
+export function generateFallbackTutorResponse(context: AITutorContext, opts: { avoidAnswer?: boolean; reason?: string } = {}): StructuredTutorResponse {
+  return { ...fallbackCore(context), fallbackReason: opts.reason || "fallback" };
+}
+
+function fallbackCore(context: AITutorContext): StructuredTutorResponse {
+  // Outside the integer lessons, answer from the lesson, the question and the student's work instead of
+  // number-line text that has nothing to do with the topic.
+  if (!isIntegerContext(context)) {
+    const r = socraticResponse(context);
+    return {
+      responseType: r.responseType,
+      message: r.message,
+      guidingQuestion: r.guidingQuestion,
+      hintLevel: r.hintLevel,
+      encouragement: r.encouragement,
+      nextStep: r.nextStep,
+      detectedIssue: r.detectedIssue,
+      suggestedAction: r.suggestedAction,
+      sourceGrounding: r.sourceGrounding,
+    };
+  }
   const isFilipino = context.requestedLanguage === "fil";
   const targetSkill = context.skill?.title || context.lesson?.title || (isFilipino ? "araling ito" : "this math concept");
 

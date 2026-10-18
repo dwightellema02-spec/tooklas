@@ -5492,6 +5492,104 @@ export const dbService = {
   },
 
   /**
+   * What a student typed to the tutor about their own work (their explanations and steps), newest last, for one
+   * skill or lesson. Each entry keeps the question and the answer it was about, so it can be used as evidence.
+   */
+  async getStudentExplanations(params: { studentId: string; skillId?: string | null; lessonId?: string | null; limit?: number }) {
+    const { studentId, skillId, lessonId, limit = 12 } = params;
+    if (!skillId && !lessonId) return [];
+    try {
+      if (hasValidDatabaseUrl) {
+        const rows = await prisma.aITutorMessage.findMany({
+          where: {
+            role: "STUDENT",
+            conversation: {
+              studentId,
+              OR: [...(skillId ? [{ skillId }] : []), ...(lessonId ? [{ lessonId }] : [])],
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        });
+        return rows.reverse().map((r) => {
+          let meta: any = {};
+          try {
+            meta = r.metadata ? JSON.parse(r.metadata) : {};
+          } catch {
+            meta = {};
+          }
+          return {
+            text: r.content,
+            questionId: meta.questionId || null,
+            blockId: meta.blockId || null,
+            studentAnswer: meta.studentAnswer ?? null,
+            createdAt: r.createdAt.toISOString(),
+          };
+        });
+      }
+    } catch (e) {
+      console.warn("getStudentExplanations failed:", e);
+    }
+    return [];
+  },
+
+  /**
+   * The student's checkpoint answers in the lessons that teach a skill, shaped like practice attempts so the mistake
+   * analysis can use them. Their ids start with "cp_": they are not QuestionAttempt rows and are never stored as
+   * analysis evidence links. Mastery counts are NOT changed by these (mastery stays practice-only).
+   */
+  async getCheckpointEvidenceForSkill(studentId: string, skillId: string, limit: number = 10) {
+    try {
+      if (hasValidDatabaseUrl) {
+        const links = await prisma.lessonSkill.findMany({ where: { skillId }, select: { lessonId: true } });
+        const lessonIds = links.map((l) => l.lessonId);
+        if (lessonIds.length === 0) return [];
+        const rows = await prisma.checkpointAttempt.findMany({
+          where: { userId: studentId, lessonId: { in: lessonIds } },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        });
+        if (rows.length === 0) return [];
+        const blocks = await prisma.lessonContentBlock.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.blockId))] } } });
+        const byId = new Map(blocks.map((b) => [b.id, b]));
+        return rows.reverse().map((r) => {
+          const block = byId.get(r.blockId);
+          let meta: any = {};
+          try {
+            meta = block?.metadata ? JSON.parse(block.metadata) : {};
+          } catch {
+            meta = {};
+          }
+          const options: string[] = Array.isArray(meta.options) ? meta.options : [];
+          return {
+            id: `cp_${r.id}`,
+            studentId,
+            questionId: r.blockId,
+            practiceSessionId: null,
+            skillId,
+            answer: r.answer,
+            isCorrect: r.isCorrect,
+            attemptNumber: r.attempt,
+            timeTakenMs: null,
+            hintUsed: false,
+            submittedAt: r.createdAt.toISOString(),
+            question: {
+              id: r.blockId,
+              type: options.length > 0 ? "MULTIPLE_CHOICE" : "SHORT_ANSWER",
+              prompt: String(meta.question || block?.content || "Lesson checkpoint"),
+              difficulty: "EASY",
+              questionData: JSON.stringify({ correctAnswer: meta.correctAnswer ?? null }),
+            },
+          };
+        });
+      }
+    } catch (e) {
+      console.warn("getCheckpointEvidenceForSkill failed:", e);
+    }
+    return [];
+  },
+
+  /**
    * Get previous attempts for a student on a specific question
    */
   async getQuestionAttemptsForStudent(studentId: string, questionId: string, practiceSessionId?: string | null) {

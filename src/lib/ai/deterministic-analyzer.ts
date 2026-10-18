@@ -44,8 +44,20 @@ export function runDeterministicAnalysis(
   const difficultyDist: Record<string, { total: number; correct: number; incorrect: number }> = {};
   const wrongAnswerMap = new Map<string, number>();
 
-  let signErrorDetected = false;
-  let comparisonErrorDetected = false;
+  // A sign error is only reported from the numbers themselves: the wrong answer is the exact opposite of the right
+  // one, and it happened more than once. A word like "sign" in the question text (for example "without the %
+  // sign") says nothing about the student's mistake.
+  let signFlips = 0;
+  let comparisonErrors = 0;
+  const correctOf = (att: QuestionAttemptDetail): number | null => {
+    try {
+      const d = att.question.questionData ? JSON.parse(att.question.questionData) : null;
+      const n = d && d.correctAnswer !== undefined ? parseFloat(String(d.correctAnswer)) : NaN;
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  };
 
   for (const att of attempts) {
     if (att.isCorrect) {
@@ -56,27 +68,14 @@ export function runDeterministicAnalysis(
         wrongAnswerMap.set(ansKey, (wrongAnswerMap.get(ansKey) || 0) + 1);
       }
 
-      // Check heuristics for mathematical signs
       const promptLower = (att.question.prompt || "").toLowerCase();
-      const answerStr = String(att.answer || "");
+      const given = parseFloat(String(att.answer || "").replace(/[^0-9.\-]/g, ""));
+      const right = correctOf(att);
+      if (right !== null && Number.isFinite(given) && right !== 0 && given === -right) signFlips++;
 
-      // 1. Comparison mistake heuristic: e.g. -5 vs -2 where student picked -5
-      if (
-        (promptLower.includes("greater") || promptLower.includes("less") || promptLower.includes("compare")) &&
-        (promptLower.includes("-") || answerStr.includes("-"))
-      ) {
-        comparisonErrorDetected = true;
-      }
-
-      // 2. Sign error heuristic: negative numbers in prompt or opposite sign error
-      if (
-        promptLower.includes("inverse") ||
-        promptLower.includes("opposite") ||
-        promptLower.includes("(-") ||
-        promptLower.includes("-") ||
-        promptLower.includes("sign")
-      ) {
-        signErrorDetected = true;
+      // Ordering or comparing signed numbers: only when the question really contains a negative number.
+      if (/(greater|less|compare|order|ascending|descending)/.test(promptLower) && /(^|[\s(])-\d/.test(att.question.prompt || "")) {
+        comparisonErrors++;
       }
     }
 
@@ -107,6 +106,8 @@ export function runDeterministicAnalysis(
     else difficultyDist[diff].incorrect++;
   }
 
+  const signErrorDetected = signFlips >= 2;
+  const comparisonErrorDetected = comparisonErrors >= 1;
   const incorrectCount = totalAttempts - correctCount;
   const accuracyPercentage = Math.round((correctCount / totalAttempts) * 100);
 
@@ -181,10 +182,27 @@ export function runDeterministicAnalysis(
  */
 export function generateDeterministicMistakeCategory(
   result: DeterministicAnalysisResult,
-  attempts: QuestionAttemptDetail[]
+  attempts: QuestionAttemptDetail[],
+  studentWork?: { arithmeticSlips: Array<{ expression: string; claimed: number; actual: number }> }
 ): StructuredMistakeAnalysis {
   const incorrectAttempts = attempts.filter((a) => !a.isCorrect);
   const evidenceAttemptIds = incorrectAttempts.map((a) => a.id);
+  // Confidence grows with the amount of evidence and is never close to certain: these are hypotheses.
+  const scaled = (base: number, n: number) => Math.min(0.85, Math.round((base + 0.08 * Math.max(0, n - 2)) * 100) / 100);
+
+  // 0. The student's own written steps contain an equation that does not compute: this is observed, not inferred.
+  if (studentWork && studentWork.arithmeticSlips.length > 0) {
+    const s = studentWork.arithmeticSlips[0];
+    return {
+      category: "CALCULATION_ERROR",
+      observation: `In their own written steps the student wrote "${s.expression} = ${s.claimed}", which works out to ${s.actual}.`,
+      pattern: "A step in the student's written work does not compute, so the final answer built on it may be off.",
+      possibleCause: "A slip in arithmetic. The method itself may still be right; the student's explanation would show.",
+      confidence: 0.75,
+      recommendation: "Ask the student to recompute that step, then retry the question. Diagnostic question: what do you get for that step now?",
+      evidenceAttemptIds,
+    };
+  }
 
   // 1. High Accuracy / Isolated error
   if (result.totalAttempts >= 3 && result.accuracyPercentage >= 85 && result.isolatedError) {
@@ -213,27 +231,27 @@ export function generateDeterministicMistakeCategory(
     };
   }
 
-  // 3. Integer Comparison Misunderstanding
+  // 3. Ordering or comparing signed numbers (the question itself contains negative numbers)
   if (result.comparisonErrorDetected && incorrectAttempts.length >= 2) {
     return {
       category: "CONCEPTUAL_MISUNDERSTANDING",
-      observation: `Student made ${incorrectAttempts.length} errors on questions involving ordering or comparing negative integers.`,
-      pattern: "Incorrect responses consistently selected numbers farther from zero as greater negative values.",
-      possibleCause: "Transferring positive whole-number magnitude rules directly to negative numbers without number-line orientation.",
-      confidence: 0.88,
+      observation: `Student made ${incorrectAttempts.length} errors on questions that ask to order or compare negative numbers.`,
+      pattern: "The wrong answers are consistent with treating a larger-looking negative number as the greater one.",
+      possibleCause: "Possibly applying positive whole-number size rules to negative numbers. This is a hypothesis: ask the student to explain how they compared.",
+      confidence: scaled(0.6, incorrectAttempts.length),
       recommendation: "Practice placing pairs of negative numbers on a horizontal number line to reinforce that values farther to the right are always greater.",
       evidenceAttemptIds,
     };
   }
 
-  // 4. Sign Error in Operations
+  // 4. Sign errors: the wrong answers are exactly the opposite of the correct ones, more than once
   if (result.signErrorDetected && incorrectAttempts.length >= 2) {
     return {
       category: "SIGN_ERROR",
-      observation: `Student made ${incorrectAttempts.length} errors on questions involving signed integer arithmetic or additive inverses.`,
-      pattern: "The absolute values were frequently correct, but the positive/negative signs of the final answer were inverted.",
-      possibleCause: "Confusion between the sign rules for addition/subtraction versus multiplication/division.",
-      confidence: 0.82,
+      observation: "In at least two wrong answers the number was right but the sign was reversed.",
+      pattern: "The size of the answer was correct while its positive or negative sign was the opposite of the correct one.",
+      possibleCause: "Possibly a sign rule applied the wrong way round. A hypothesis: ask the student which rule they used.",
+      confidence: scaled(0.6, incorrectAttempts.length),
       recommendation: "Review the two-step rule for adding integers with unlike signs: subtract absolute values and take the sign of the larger magnitude.",
       evidenceAttemptIds,
     };
@@ -267,15 +285,30 @@ export function generateDeterministicMistakeCategory(
     }
   }
 
-  // 7. General Calculation Error
+  // 7. The same wrong answer again and again: a consistent method, not a one-off slip. The system can say that
+  // much, but not WHY, so the recommendation is to ask the student to explain.
+  const repeated = result.commonWrongAnswers[0];
+  if (repeated && repeated.frequency >= 2) {
+    return {
+      category: "PROCEDURAL_ERROR",
+      observation: `The student gave the answer "${repeated.answer}" ${repeated.frequency} times and it was marked incorrect each time.`,
+      pattern: "The same wrong answer repeated, which points to a consistent method rather than a one-off slip.",
+      possibleCause: "A systematic misunderstanding or a wrong procedure is possible. The answers alone cannot show which.",
+      confidence: scaled(0.5, repeated.frequency + 1),
+      recommendation: "Ask the student to explain their steps on one of these questions, then walk through a worked example from the lesson. Diagnostic question: how did you get that answer?",
+      evidenceAttemptIds,
+    };
+  }
+
+  // 8. Several wrong answers but nothing that shows why: say so instead of inventing a cause.
   if (incorrectAttempts.length >= 2) {
     return {
-      category: "CALCULATION_ERROR",
+      category: "UNKNOWN",
       observation: `Student answered ${result.incorrectCount} of ${result.totalAttempts} questions incorrectly.`,
-      pattern: "Arithmetic computation errors observed during multi-step evaluation.",
-      possibleCause: "Small arithmetic miscalculations during intermediate steps.",
-      confidence: 0.65,
-      recommendation: "Take extra time on intermediate arithmetic steps and verify calculations with inverse operations.",
+      pattern: "The wrong answers do not show one clear error pattern.",
+      possibleCause: "The cause cannot be told from the answers alone. The student's explanation of their steps is needed.",
+      confidence: 0.4,
+      recommendation: "Ask the student to explain how they solved one of the questions they missed, and watch for the step where it goes wrong.",
       evidenceAttemptIds,
     };
   }

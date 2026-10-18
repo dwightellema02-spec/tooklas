@@ -27,9 +27,10 @@ export interface StudentContextData {
 }
 
 export interface CurriculumContextData {
-  subject: string;
-  grade: number;
-  term: number;
+  /** Taken from the lesson when one is open; otherwise left unknown instead of guessed. */
+  subject?: string;
+  grade?: number;
+  term?: number;
   unitTitle?: string;
   lessonTitle?: string;
 }
@@ -43,6 +44,10 @@ export interface QuestionContextData {
   expectedAnswer?: string; // Used strictly internally for server-side pedagogical guidance
   correctFeedback?: string;
   incorrectFeedback?: string;
+  /** Hint written for each wrong multiple-choice option, keyed by choice id. Internal: never sent to students as is. */
+  choiceHints?: Record<string, string>;
+  /** Where the question came from: a practice question or a checkpoint inside a lesson. */
+  source?: "practice" | "checkpoint";
 }
 
 export interface AttemptHistoryItem {
@@ -158,6 +163,23 @@ export interface AITutorContext {
   sourcePriority?: string[];
   videoIntegrityBoundary?: string;
   requestedLanguage?: "fil" | "en";
+  /** The lesson section the student has open, when the page told us. */
+  currentSection?: { id: string; title: string; type: string };
+  /** What is known about the student's topic and where that knowledge came from. */
+  contextStatus?: {
+    lessonKnown: boolean;
+    questionKnown: boolean;
+    /** "lesson" and "question" are facts from data; "student_message" is only inferred from what they typed. */
+    topicSource: "lesson" | "question" | "student_message" | "unknown";
+    conflict?: { mentioned: string; lessonTopic: string };
+  };
+  /** What the student wrote about their own work (current message and earlier ones for this question). */
+  studentWork?: {
+    explanations: string[];
+    arithmeticSlips: Array<{ expression: string; claimed: number; actual: number }>;
+  };
+  /** The student's checkpoint results in this lesson. */
+  checkpointHistory?: Array<{ blockId: string; attempts: number; correct: boolean }>;
 }
 
 export interface StructuredTutorResponse {
@@ -170,6 +192,8 @@ export interface StructuredTutorResponse {
   detectedIssue?: string;
   suggestedAction?: string;
   sourceGrounding?: string[];
+  /** Set when the validator replaced the model's reply with the built-in tutor's, and why. */
+  fallbackReason?: string;
 }
 
 export interface TutorAIRequest {
@@ -179,6 +203,8 @@ export interface TutorAIRequest {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  /** The structured context behind the prompt, so a fallback engine can use facts instead of parsing text. */
+  context?: AITutorContext;
 }
 
 export interface TutorAIResponseRaw {
@@ -208,6 +234,8 @@ export interface AITutorInteractParams {
   studentQuery?: string;
   helpLevel?: AITutorHelpLevel;
   studentAnswer?: any;
+  /** The lesson block the student is on, or the checkpoint they are asking about. Checked against the lesson. */
+  blockId?: string;
 }
 
 export interface TutorMessageDTO {

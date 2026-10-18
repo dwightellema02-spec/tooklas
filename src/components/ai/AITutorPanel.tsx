@@ -45,6 +45,8 @@ export interface AITutorPanelProps {
     practiceSessionId?: string;
     studentAnswer?: any;
     hasFailedAttempt?: boolean;
+    /** The lesson section or checkpoint the student is on. The server checks it belongs to the lesson. */
+    blockId?: string;
   };
   initialHelpLevel?: AITutorHelpLevel;
 }
@@ -57,6 +59,8 @@ export function AITutorPanel({
 }: AITutorPanelProps) {
   const [messages, setMessages] = useState<TutorMessageDTO[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
+  // True when the last reply came from the built-in tutor because the AI model was unavailable.
+  const [basicMode, setBasicMode] = useState(false);
   const [inputQuery, setInputQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +125,7 @@ export function AITutorPanel({
             skillId: context.skillId,
             questionId: context.questionId,
             practiceSessionId: context.practiceSessionId,
+            blockId: context.blockId,
             studentQuery: query,
             helpLevel,
             studentAnswer: context.studentAnswer,
@@ -134,6 +139,7 @@ export function AITutorPanel({
 
         if (json.data) {
           setConversationId(json.data.conversationId);
+          setBasicMode(String(json.data.providerInfo?.provider || "").includes("local"));
           setMessages((prev: TutorMessageDTO[]) => [...prev, json.data.message]);
           if (json.data.message.hintLevel) {
             setCurrentHintLevel(json.data.message.hintLevel);
@@ -462,6 +468,13 @@ export function AITutorPanel({
               <div className="flex items-center gap-2 p-3 bg-white rounded-2xl border border-emerald-100 w-fit text-slate-600 text-xs shadow-xs animate-pulse">
                 <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
                 <span>Tuklas AI is thinking...</span>
+              </div>
+            )}
+
+            {basicMode && !loading && (
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px] flex items-start gap-2">
+                <AlertCircle className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                <p>Basic tutor mode: the AI model is busy, so this answer uses the built-in tutor. It still follows your lesson, but it is simpler.</p>
               </div>
             )}
 

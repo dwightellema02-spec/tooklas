@@ -127,12 +127,15 @@ export default function StudentLearningPathPage({ onNavigate }: StudentLearningP
 
   const handleStartAdaptiveActivity = (rec: AdaptiveRecommendationDTO) => {
     if (rec.recommendedActivityType === "PRACTICE_SET") {
-      const pSetId = rec.recommendedPracticeSetId || rec.recommendedActivityId || "ps_integers_basics";
-      handleNav(`/student/practice/${pSetId}`);
+      const pSetId = rec.recommendedPracticeSetId || rec.recommendedActivityId;
+      // Never fall back to a fixed practice set: it may belong to another topic.
+      if (pSetId) handleNav(`/student/practice/${pSetId}`);
+      else if (rec.lessonId) handleNav(`/student/lessons/${rec.lessonId}`);
+      else handleNav("/student/learning-path");
     } else if (rec.lessonId) {
       handleNav(`/student/lessons/${rec.lessonId}`);
     } else {
-      handleNav("/student/practice/ps_integers_basics");
+      handleNav("/student/learning-path");
     }
   };
 

@@ -64,10 +64,23 @@ export class RemediationSelector {
 
     // 3. If practice set is recommended (EASIER, SAME, or HARDER)
     const practiceSets: any[] = await dbService.getPracticeSets({ skillId });
-    // Find approved/published practice set
-    const candidateSet = practiceSets.find(
-      (ps: any) => ps.status === "PUBLISHED" && (!ps.isDiagnostic || targetDifficulty === "EASY")
-    ) || practiceSets[0];
+    // Choose the published set whose questions are closest to the difficulty the decision asked for (easy, medium or
+    // hard). Before, the first published set was always taken, so a struggling student could be sent the challenge set.
+    const rankOf = (d: string) => (d === "HARD" ? 3 : d === "MEDIUM" ? 2 : 1);
+    const wanted = rankOf(targetDifficulty);
+    const scored = practiceSets
+      .filter((ps: any) => ps.status === "PUBLISHED" && (!ps.isDiagnostic || targetDifficulty === "EASY"))
+      .map((ps: any) => {
+        const qs: any[] = Array.isArray(ps.questions) ? ps.questions : [];
+        const ranks = qs.map((q) => rankOf(String(q.question?.difficulty || "MEDIUM")));
+        return { ps, level: ranks.length ? ranks.reduce((a, b) => a + b, 0) / ranks.length : null };
+      })
+      .filter((x) => x.level !== null) as Array<{ ps: any; level: number }>;
+    scored.sort((a, b) => Math.abs(a.level - wanted) - Math.abs(b.level - wanted) || (wanted >= 2 ? b.level - a.level : a.level - b.level));
+    const candidateSet =
+      scored[0]?.ps ||
+      practiceSets.find((ps: any) => ps.status === "PUBLISHED" && (!ps.isDiagnostic || targetDifficulty === "EASY")) ||
+      practiceSets[0];
 
     if (candidateSet) {
       const diffLabel = targetDifficulty.toLowerCase();

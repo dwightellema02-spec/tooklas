@@ -3,6 +3,7 @@
 import { dbService } from "../db";
 import { getAIProvider, LocalTutorEngine } from "./provider";
 import { runDeterministicAnalysis, generateDeterministicMistakeCategory } from "./deterministic-analyzer";
+import { findArithmeticSlips } from "./arithmetic";
 import { buildMistakeAnalysisSystemPrompt, buildMistakeAnalysisUserPrompt } from "./prompts";
 import { validateMistakeAnalysisOutput } from "./validators";
 import type {
@@ -40,17 +41,37 @@ export class MistakeAnalyzerService {
 
     // 1. Collect relevant attempts (capped between 3 and 20 attempts)
     const limit = Math.min(20, Math.max(3, maxAttempts));
-    const attempts: QuestionAttemptDetail[] =
+    const practiceAttempts: QuestionAttemptDetail[] =
       await dbService.getDetailedAttemptsForStudent({
         studentId,
         skillId,
         lessonId,
-        practiceSessionId,
+        // Analyse the student's recent attempts on the whole skill, not only the session that just ended: a
+        // single session usually has one attempt per question, which hid every repeated mistake.
+        practiceSessionId: skillId ? undefined : practiceSessionId,
         limit,
       });
 
-    // 2. Check for insufficient sample size (< 2 attempts)
-    if (attempts.length < 2) {
+    // Checkpoint answers inside the lesson are evidence too (they are not practice attempts and do not count toward
+    // mastery). A session-specific analysis stays practice-only.
+    const checkpointAttempts: QuestionAttemptDetail[] =
+      skillId && !practiceSessionId
+        ? ((await dbService.getCheckpointEvidenceForSkill(studentId, skillId, 10).catch(() => [])) as QuestionAttemptDetail[])
+        : [];
+    const attempts: QuestionAttemptDetail[] = [...practiceAttempts, ...checkpointAttempts].sort(
+      (a, b) => new Date(a.submittedAt as any).getTime() - new Date(b.submittedAt as any).getTime()
+    );
+
+    // 2a. What the student wrote about their own work (typed to the tutor), and any step in it that does not compute
+    const explanations = await dbService
+      .getStudentExplanations({ studentId, skillId, lessonId, limit: 12 })
+      .catch(() => [] as Array<{ text: string; questionId: string | null; studentAnswer: string | null }>);
+    const studentWords = explanations.map((e: { text: string }) => e.text);
+    const arithmeticSlips = findArithmeticSlips(studentWords.join(" \n "));
+
+    // 2. Check for insufficient sample size (< 2 attempts). A step the student wrote that provably does not compute
+    // is evidence on its own, so it lets the analysis continue.
+    if (attempts.length < 2 && arithmeticSlips.length === 0) {
       const emptyFallback = {
         category: "UNKNOWN" as const,
         observation: `Only ${attempts.length} attempt recorded for this skill so far.`,
@@ -96,20 +117,23 @@ export class MistakeAnalyzerService {
       }
     }
 
-    // 4. Deterministic Pre-Analysis (facts, distributions, rule-based indicators)
+    // 5. Deterministic Pre-Analysis (facts, distributions, rule-based indicators)
     const deterministic = runDeterministicAnalysis(attempts, prerequisiteData);
-    const deterministicFallback = generateDeterministicMistakeCategory(deterministic, attempts);
+    const deterministicFallback = generateDeterministicMistakeCategory(deterministic, attempts, { arithmeticSlips });
 
-    // 5. Cache check: If not forced, check recent completed analysis for student + skill
+    // 6. Cache check: reuse an earlier analysis only when nothing new has happened since: the newest attempt and the
+    // amount of written work must be the same as when it was made. (A time window alone returned stale results.)
+    const latestAttemptId = attempts[attempts.length - 1]?.id ?? null;
     if (!forceRefresh && skillId) {
       const existing = await dbService.getLatestMistakeAnalysisForSkill(studentId, skillId);
       if (existing) {
-        const createdAtTime = new Date(existing.createdAt).getTime();
-        const now = Date.now();
-        // If analysis is younger than 15 minutes and the latest attempt is the same, reuse it
-        const latestAttemptId = attempts[attempts.length - 1]?.id;
-        const hasLatestEvidence = existing.evidenceSummary?.includes(latestAttemptId) || (now - createdAtTime < 15 * 60 * 1000);
-        if (hasLatestEvidence) {
+        let meta: any = {};
+        try {
+          meta = existing.metadata ? JSON.parse(existing.metadata) : {};
+        } catch {
+          meta = {};
+        }
+        if (latestAttemptId && meta.latestAttemptId === latestAttemptId && (meta.explanationCount ?? 0) === studentWords.length) {
           const fullExisting = await dbService.getMistakeAnalysisById(existing.id, studentId, "STUDENT");
           if (fullExisting) return fullExisting as MistakeAnalysisDTO;
         }
@@ -146,6 +170,8 @@ export class MistakeAnalyzerService {
         lessonTitle,
         deterministic,
         attempts,
+        studentWords,
+        arithmeticSlips,
       });
 
       try {
@@ -182,6 +208,18 @@ export class MistakeAnalyzerService {
       }
     }
 
+    // 7b. A wrong answer is an observation, not a confirmed misconception. However sure a model sounds, the confidence
+    // that is stored is capped by how much evidence there is: few wrong answers, or no explanation from the student,
+    // keep it lower. (A step the system verified does not compute is the exception.)
+    {
+      let cap = 0.85;
+      if (deterministic.incorrectCount < 3) cap = Math.min(cap, 0.7);
+      if (studentWords.length === 0) cap = Math.min(cap, 0.75);
+      const verified = arithmeticSlips.length > 0 && structured.category === "CALCULATION_ERROR";
+      const limit = verified ? 0.85 : cap;
+      if (structured.confidence > limit) structured = { ...structured, confidence: limit };
+    }
+
     // 8. Persist analysis & evidence links
     const saved = await dbService.saveMistakeAnalysis({
       studentId,
@@ -201,9 +239,13 @@ export class MistakeAnalyzerService {
       metadata: JSON.stringify({
         deterministic,
         evidenceCount: structured.evidenceAttemptIds.length,
+        latestAttemptId,
+        checkpointAttemptCount: checkpointAttempts.length,
+        explanationCount: studentWords.length,
+        arithmeticSlips,
         timestamp: new Date().toISOString(),
       }),
-      evidenceAttemptIds: structured.evidenceAttemptIds,
+      evidenceAttemptIds: structured.evidenceAttemptIds.filter((id) => !id.startsWith("cp_")),
     });
 
     return saved as MistakeAnalysisDTO;

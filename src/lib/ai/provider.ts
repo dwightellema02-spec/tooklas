@@ -2,6 +2,8 @@
 
 import { GoogleGenAI } from "@google/genai";
 import type { AIProvider, TutorAIRequest, TutorAIResponseRaw } from "./types";
+import { isIntegerContext, socraticResponse } from "./socratic-engine";
+import { parseModelJson } from "./json-repair";
 
 const LEGACY_MODEL_MAP: Record<string, string> = {};
 
@@ -36,6 +38,8 @@ export class GeminiAIProvider implements AIProvider {
       console.warn("Gemini API quota cooldown active; delegating to LocalTutorEngine fallback.");
       return new LocalTutorEngine().generateTutorResponse(request);
     }
+    // Models that think before answering spend part of the budget on thinking, so a small limit cuts the reply off.
+    const maxOutputTokens = Math.max(request.maxTokens || 1024, 1500);
 
     const timeoutMs = request.timeoutMs || 15000;
     const modelsToTry = [this.model];
@@ -57,7 +61,7 @@ export class GeminiAIProvider implements AIProvider {
           contents: request.userPrompt,
           config: {
             systemInstruction: request.systemPrompt,
-            maxOutputTokens: request.maxTokens || 1024,
+            maxOutputTokens,
             temperature: request.temperature !== undefined ? request.temperature : 0.4,
             responseMimeType: "application/json",
           },
@@ -69,7 +73,14 @@ export class GeminiAIProvider implements AIProvider {
 
         const response = await Promise.race([generatePromise, timeoutPromise]);
         let responseText = (response.text || "").trim();
-        const parsed = JSON.parse(responseText);
+        if (!responseText) throw new Error("The model returned an empty reply.");
+
+        // Math answers often contain LaTeX such as \frac or \times, whose backslashes make strict JSON invalid.
+        // Repair that here and, if the text still does not parse, hand the raw text on: the output validator can
+        // still recover the message from it. Throwing here would waste a call on every other model and then
+        // replace a good answer with a canned one.
+        let parsed: any = parseModelJson(responseText);
+        if (parsed) responseText = JSON.stringify(parsed);
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.message === undefined) {
           const fallbackMsg =
             parsed.response ||
@@ -119,6 +130,16 @@ export class LocalTutorEngine implements AIProvider {
   readonly defaultModel = "tuklas-pedagogical-v2-companion";
 
   async generateTutorResponse(request: TutorAIRequest): Promise<TutorAIResponseRaw> {
+    // With structured context, and outside the integer lessons the keyword rules below were written for, answer from
+    // the lesson, the question and the student's own work.
+    if (request.context && !isIntegerContext(request.context)) {
+      return {
+        text: JSON.stringify(socraticResponse(request.context)),
+        provider: this.name,
+        model: "tuklas-socratic-v3-contextual",
+      };
+    }
+
     const prompt = request.userPrompt.toLowerCase();
     const queryMatch = request.userPrompt.match(/Student Query:\s*"([^"]*)"/i);
     const studentQuery = queryMatch ? queryMatch[1].toLowerCase().trim() : "";
