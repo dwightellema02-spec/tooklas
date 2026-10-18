@@ -4,6 +4,9 @@ import { AITutorService } from "../src/lib/ai/tutor";
 import { LocalTutorEngine, GeminiAIProvider, getAIProvider } from "../src/lib/ai/provider";
 
 async function main() {
+  // This suite checks lesson ORDER. The mastery gate (next lesson needs the previous skill at DEVELOPING) is a later,
+  // deliberate rule with its own test (test-mastery-gate.ts), so it is switched off here.
+  process.env.MASTERY_GATE = "off";
   console.log("==================================================================");
   console.log("   TUKLAS AI — COMPREHENSIVE PHASE 21 VERIFICATION SUITE");
   console.log("==================================================================");

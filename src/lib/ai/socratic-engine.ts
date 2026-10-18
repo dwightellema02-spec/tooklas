@@ -150,8 +150,8 @@ const rank = (h: AITutorHelpLevel | undefined): number => (h === "CONCEPT_EXPLAN
 // ---------------------------------------------------------------- intents
 const INJECTION = /(ignore (all |the |your )?(previous|above|prior)|system prompt|act as dan|jailbreak|developer mode|api[_ ]?key|database_url|passwordhash|reveal your (instructions|prompt))/i;
 const OFF_TOPIC = /\b(celebrity|movie|song|recipe|weather|basketball game|crush|boyfriend|girlfriend|tiktok|mobile legends)\b/i;
-const DIRECT_ANSWER = /(give me the (final )?answer|what('| i)?s the (final )?answer|just tell me|tell me the answer|show (me )?the answer|ibigay.{0,12}sagot|ano ang sagot|ano po ang sagot|sagutin mo na|pakisabi.{0,12}sagot|sabihin mo.{0,12}sagot|the answer for this)/i;
-const CONFUSED = /(don'?t (understand|know|get)|dont (understand|know|get)|\bidk\b|no idea|confused|i'?m lost|hindi ko (alam|maintindihan|gets)|di ko (alam|maintindihan|gets)|nalilito|\bewan\b|hirap na hirap|walang ideya)/i;
+const DIRECT_ANSWER = /(give me the (final )?answer|what('| i)?s the (final )?answer|just tell me|tell me the answer|show (me )?the answer|ibigay.{0,12}sagot|ano ang sagot|ano po ang sagot|sagutin mo na|pakisabi.{0,24}sagot|sabihin mo.{0,24}sagot|sabihin.{0,12}na lang.{0,12}sagot|the answer for this)/i;
+const CONFUSED = /(don'?t (understand|know|get)|dont (understand|know|get)|\bidk\b|no idea|confused|i'?m lost|hindi ko (po )?(alam|maintindihan|gets)|di ko (po )?(alam|maintindihan|gets)|nalilito|\bewan\b|hirap na hirap|walang ideya)/i;
 const WANTS_EXAMPLE = /(another example|an example|worked example|show me an example|halimbawa)/i;
 const WANTS_SIMPLER = /(simpler|easier|too hard|mas madali|mas simple|masyadong mahirap|paki-?simple)/i;
 const LANGUAGE_ONLY = /^(in )?(tagalog|filipino|english|ingles|sa tagalog|sa filipino|sa ingles)( please| po)?[.!]*$/i;
@@ -330,9 +330,28 @@ export function socraticResponse(rawCtx: AITutorContext): EngineReply {
       const ne = numberOf(String(q.expectedAnswer ?? ""));
       const flipped = na !== null && ne !== null && na !== 0 && na === -ne;
 
+      // What the student said alongside the wrong answer decides how the reply opens. Without this the reply
+      // ignored "just tell me the answer", "I don't understand" and the student's own explanation.
+      const asksAnswer = DIRECT_ANSWER.test(lower);
+      const confused = CONFUSED.test(lower) || WANTS_SIMPLER.test(lower);
+      const ownWords = query.length >= 8 && !asksAnswer && !confused;
+      const lead = asksAnswer
+        ? t("Hindi ko ibibigay ang pinal na sagot, dahil mas natututo ka kapag ikaw mismo ang nakakuha nito. ", "I won't give the final answer, because you learn more when you find it yourself. ")
+        : confused
+        ? t("Ayos lang na hindi pa sigurado. Hatiin natin sa maliliit na hakbang. ", "It's fine not to be sure yet. Let's split this into small steps. ")
+        : ownWords
+        ? t("Salamat sa paliwanag mo. ", "Thanks for explaining. ")
+        : "";
+
       if (effective === 1) {
         const isMC = Boolean(q.choices && q.choices.length > 0);
-        const gq = choiceHint
+        const gq = confused || asksAnswer
+          ? t("Ano ang hinihingi ng tanong? Sabihin mo sa sarili mong salita.", "What is the question asking you to find? Say it in your own words.")
+          : ownWords && !isMC
+          ? rule
+            ? t(`Balikan ang tuntunin sa aralin: "${rule}" Alin sa mga hakbang mo ang tumutugma rito?`, `Look at the rule in your lesson: "${rule}" Which of your steps matches it?`)
+            : t("Alin sa mga hakbang mo ang sigurado kang tama, at alin ang hindi mo sigurado?", "Which of your steps are you sure about, and which are you unsure of?")
+          : choiceHint
           ? t(`Baka ito ang nangyari sa pinili mo: ${choiceHint} Sa tingin mo, tama ba iyon?`, `This might be what happened with your choice: ${choiceHint} Do you think that fits?`)
           : rule
           ? isMC
@@ -343,7 +362,9 @@ export function socraticResponse(rawCtx: AITutorContext): EngineReply {
           : t(`Paano mo nakuha ang ${shown}? Isulat ang mga hakbang mo para makita natin kung saan mag-aayos.`, `How did you get ${shown}? Write your steps so we can see where to adjust.`);
         return reply({
           responseType: "GUIDING_QUESTION",
-          message: prefix + t(`Salamat sa pagsubok. Hindi pa tama ang ${shown}, pero malapit tayong makahanap ng dahilan.`, `Thanks for trying. ${shown} is not right yet, but we can find out why.`),
+          message: prefix + lead + (ownWords
+            ? t(`Hindi pa tama ang ${shown}, pero malapit tayong makahanap ng dahilan.`, `${shown} is not right yet, but we can find out why.`)
+            : t(`Salamat sa pagsubok. Hindi pa tama ang ${shown}, pero malapit tayong makahanap ng dahilan.`, `Thanks for trying. ${shown} is not right yet, but we can find out why.`)),
           guidingQuestion: gq,
           hintLevel: 1,
           detectedIssue: flipped ? "SIGN_ERROR" : "NONE",
@@ -367,7 +388,7 @@ export function socraticResponse(rawCtx: AITutorContext): EngineReply {
           : "";
         return reply({
           responseType: "HINT",
-          message: prefix + intro + body,
+          message: prefix + lead + intro + body,
           guidingQuestion: t("Gamit iyan, ano ang una mong gagawin sa mga numero ng tanong?", "Using that, what is the first thing you would do with the numbers in the question?"),
           hintLevel: 2,
           detectedIssue: flipped ? "SIGN_ERROR" : "NONE",
@@ -383,7 +404,7 @@ export function socraticResponse(rawCtx: AITutorContext): EngineReply {
       if (exNote) parts.push(t(`Halimbawa sa aralin: ${exText}`, `Lesson example: ${exText}`));
       return reply({
         responseType: "EXPLANATION",
-        message: prefix + t(
+        message: prefix + lead + t(
           `Ipaliwanag natin ang paraan nang buo, dahil ilang beses mo nang sinubukan. ${parts.join(" ")}`.trim(),
           `Let's explain the method fully, since you have tried a few times. ${parts.join(" ")}`.trim()
         ),

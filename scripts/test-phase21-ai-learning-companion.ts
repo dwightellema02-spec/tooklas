@@ -177,7 +177,7 @@ async function runPhase21TestSuite() {
   // Test 6: Socratic behavior
   const socraticRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "How do I solve this integer addition problem? Level: LEVEL_1_HINT",
+    userPrompt: 'Student Query: "How do I solve this integer addition problem? Level: LEVEL_1_HINT"',
   });
   const parsedSocratic = JSON.parse(socraticRes.text);
   assert(
@@ -188,7 +188,7 @@ async function runPhase21TestSuite() {
   // Test 7: Direct-answer resistance
   const answerDemandRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Just give me the answer. What is the answer to this problem?",
+    userPrompt: 'Student Query: "Just give me the answer. What is the answer to this problem?"',
   });
   const parsedDirect = JSON.parse(answerDemandRes.text);
   assert(
@@ -201,7 +201,8 @@ async function runPhase21TestSuite() {
   // Test 8: Confusion detection
   const confusionRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "I don't understand how to solve this at all, I'm completely confused.",
+    // The real prompt builder always wraps the student's message like this; the engine reads it from here.
+    userPrompt: 'Student Query: "I don\'t understand how to solve this at all, I\'m completely confused."',
   });
   const parsedConfusion = JSON.parse(confusionRes.text);
   assert(
@@ -212,7 +213,7 @@ async function runPhase21TestSuite() {
   // Test 9: Wrong-answer handling
   const wrongRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "My answer is -10. Why is -7 + 3 = -10 wrong?",
+    userPrompt: 'Student Query: "My answer is -10. Why is -7 + 3 = -10 wrong?"',
   });
   const parsedWrong = JSON.parse(wrongRes.text);
   assert(
@@ -236,7 +237,7 @@ async function runPhase21TestSuite() {
   // Test 12: Calculation-error handling
   const calcRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Student made a calculation error in arithmetic step 13 - 8 = 6",
+    userPrompt: 'Student Query: "Student made a calculation error in arithmetic step 13 - 8 = 6"',
   });
   const parsedCalc = JSON.parse(calcRes.text);
   assert(
@@ -247,7 +248,7 @@ async function runPhase21TestSuite() {
   // Test 13: Conceptual-error handling (-5 vs -2)
   const conceptRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Student says -5 is greater than -2 because 5 is bigger than 2",
+    userPrompt: 'Student Query: "Student says -5 is greater than -2 because 5 is bigger than 2"',
   });
   const parsedConcept = JSON.parse(conceptRes.text);
   assert(
@@ -260,7 +261,7 @@ async function runPhase21TestSuite() {
   // Test 14: Prerequisite-gap handling
   const prereqRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Student lacks prerequisite: What is an absolute value? I don't know absolute value.",
+    userPrompt: 'Student Query: "Student lacks prerequisite: What is an absolute value? I don\'t know absolute value."',
   });
   const parsedPrereq = JSON.parse(prereqRes.text);
   assert(
@@ -273,7 +274,7 @@ async function runPhase21TestSuite() {
   // Test 15: Repeated-mistake handling (switching teaching approach to counters)
   const repeatRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Student repeated the same mistake: I tried again and got -10 again.",
+    userPrompt: 'Student Query: "Student repeated the same mistake: I tried again and got -10 again."',
   });
   const parsedRepeat = JSON.parse(repeatRes.text);
   assert(
@@ -311,7 +312,7 @@ async function runPhase21TestSuite() {
   // Test 19: Difficulty adaptation (Requesting challenge vs requesting simplification)
   const harderRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Can I try a harder challenge problem on integers?",
+    userPrompt: 'Student Query: "Can I try a harder challenge problem on integers?"',
   });
   const parsedHarder = JSON.parse(harderRes.text);
   assert(
@@ -321,7 +322,7 @@ async function runPhase21TestSuite() {
 
   const easierRes = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Can you give me an easier explanation or simpler way?",
+    userPrompt: 'Student Query: "Can you give me an easier explanation or simpler way?"',
   });
   const parsedEasier = JSON.parse(easierRes.text);
   assert(
@@ -332,7 +333,7 @@ async function runPhase21TestSuite() {
   // Test 20: Mastery integration
   const masteryPrompt = await localEngine.generateTutorResponse({
     systemPrompt: "system",
-    userPrompt: "Student asked: I solved it! I got -4. How is my mastery?",
+    userPrompt: 'Student Query: "Student asked: I solved it! I got -4. How is my mastery?"',
   });
   const parsedMastery = JSON.parse(masteryPrompt.text);
   assert(

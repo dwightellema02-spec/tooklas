@@ -337,6 +337,24 @@ export function AITutorPanel({
     }
   };
 
+  // A follow-up question may be waiting from an earlier session: show it when the panel opens on a skill.
+  useEffect(() => {
+    if (!isOpen || !context.skillId) return;
+    let cancelled = false;
+    authFetch(`/api/student/misconceptions/pending?skillId=${encodeURIComponent(context.skillId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled && json?.data?.followUp) {
+          setFollowUp(json.data.followUp);
+          setFollowUpNote(null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, context.skillId]);
+
   // If opened fresh and no messages, automatically request a Level 1 Hint once
   useEffect(() => {
     const key = `${context.questionId || "general"}_${isOpen}`;

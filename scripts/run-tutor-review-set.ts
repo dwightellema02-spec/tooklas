@@ -7,11 +7,12 @@
  *
  * What the numbers mean: "agrees with the draft" says the SYSTEM gives the same answer as the AI-written expectation. It
  * does NOT say the expectation is right. Only a teacher's verdict does that (docs/TUTOR_EDUCATOR_REVIEW.md).
- * The tutor reply in the CSV is from the built-in tutor with a plain lesson header (no lesson text), not from Gemini.
+ * The tutor reply in the CSV is from the built-in tutor with the real draft lesson text, not from Gemini.
  */
 import fs from "fs";
 import path from "path";
 import { SKILLS } from "../prisma/g7-q1-questions.ts";
+import { Q1_DRAFT_LESSONS } from "../prisma/g7-q1-lessons.ts";
 import { MISCONCEPTION_BY_ID } from "../src/lib/ai/misconceptions/catalog.ts";
 import { alternativesFor, explainAttempts, numberOf, sameNumber, selectFollowUp, type PoolQuestion, type WrongAttempt } from "../src/lib/ai/misconceptions/detector.ts";
 import { socraticResponse, revealsExpectedAnswer } from "../src/lib/ai/socratic-engine.ts";
@@ -79,7 +80,8 @@ function runCase(c: ReviewCase) {
 
   // the built-in tutor's reply to the last turn
   const mine = attempts.filter((x) => (x.a.q ?? c.q) === c.q);
-  const header = [title, "Week · " + title];
+  const lesson = Q1_DRAFT_LESSONS.find((l) => l.id === `lsn_g7q1_${c.skill.replace(/^(w\d+)(l\d+)$/, "$1_$2")}`);
+  const header = [title, lesson?.title || title];
   const conflict = c.message ? detectTopicConflict(c.message, header) : null;
   const lessonKnown = c.q > 0;
   const ctx = {
@@ -95,7 +97,20 @@ function runCase(c: ReviewCase) {
     recentMessages: [],
     helpLevel: "LEVEL_1_HINT",
     studentQuery: c.message || "",
-    groundedLesson: lessonKnown ? { id: "lsn_" + c.skill, title, status: "PUBLISHED", learningObjectives: [title], contentBlocks: [], teacherMaterials: [], prerequisiteSkills: [] } : undefined,
+    groundedLesson: lessonKnown
+      ? {
+          id: lesson?.id || "lsn_" + c.skill,
+          title: lesson?.title || title,
+          status: "PUBLISHED",
+          learningObjectives: lesson?.learningObjectives || [title],
+          // the real lesson's teaching blocks, as the app would send them to the tutor
+          contentBlocks: (lesson?.blocks || [])
+            .map((b, i) => ({ id: `b${i}`, type: b.type, sequenceOrder: i, title: b.title, content: b.content, metadata: b.metadata }))
+            .filter((b) => b.type === "TEXT" || b.type === "EXAMPLE" || b.type === "SUMMARY"),
+          teacherMaterials: [],
+          prerequisiteSkills: [],
+        }
+      : undefined,
     requestedLanguage: detectLanguagePreference(c.message || "", []),
     contextStatus: {
       lessonKnown,

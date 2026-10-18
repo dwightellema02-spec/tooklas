@@ -78,6 +78,11 @@ t("that row is now CHECKING with the question stored", checkingRow?.status === "
 const tut2 = await askTutor(A.tok, sessA, Q1, "20", "Can you help again?");
 t("asking again re-offers the same question instead of a new one", tut2.b.data?.followUp?.questionId === fu.questionId);
 
+const pend = await j(`/api/student/misconceptions/pending?skillId=${SKILL}`, {}, A.tok);
+t("the waiting question can be loaded on its own (after a reload)", pend.s === 200 && pend.b.data?.followUp?.questionId === fu.questionId, JSON.stringify(pend.b).slice(0, 120));
+t("the pending question needs a sign-in and a skill", (await j(`/api/student/misconceptions/pending?skillId=${SKILL}`)).s === 401 && (await j("/api/student/misconceptions/pending", {}, A.tok)).s === 400);
+t("another student has none waiting", (await j(`/api/student/misconceptions/pending?skillId=${SKILL}`, {}, (await newStudent("nopending")).tok)).b.data?.followUp === null);
+
 console.log("\n4. The student's own answer decides");
 const entry = MISCONCEPTION_BY_ID.get(checkingRow!.conceptKey)!;
 const fq = await prisma.question.findUniqueOrThrow({ where: { id: fu.questionId } });

@@ -2100,6 +2100,25 @@ app.post("/api/student/misconceptions/:id/answer", aiEndpointRateLimiter.middlew
   }
 });
 
+// The follow-up question waiting for this student on a skill (so it shows again after a reload or a new session).
+app.get("/api/student/misconceptions/pending", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      return res.status(401).json({ error: "Unauthorized: Please log in." });
+    }
+    const skillId = typeof req.query.skillId === "string" ? req.query.skillId : "";
+    if (!skillId) {
+      return res.status(400).json({ error: "skillId is required." });
+    }
+    const followUp = await Misconceptions.nextFollowUp({ studentId: session.userId, skillId, language: req.query.language === "fil" ? "fil" : "en" });
+    return res.json({ data: { followUp } });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to load the follow-up question";
+    return res.status(500).json({ error: message });
+  }
+});
+
 // Teacher/Admin: suspected misconceptions for one student, with the evidence and the alternatives not ruled out.
 app.get("/api/teacher/students/:studentId/misconceptions", async (req: Request, res: Response) => {
   try {

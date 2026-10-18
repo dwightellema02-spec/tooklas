@@ -63,11 +63,11 @@ These numbers measure agreement with the AI-written drafts. They say nothing abo
 
 ## Known limits of this set
 
-* **The tutor replies are from the built-in tutor, not from Gemini**, and without lesson text (only the lesson title). The live tutor
-  with the full lesson will word things differently.
-* **Four built-in replies are generic.** RC-35 (remembered part of the formula), RC-37 ("hindi ko po maintindihan"), RC-42 (the student
-  explained their 20) and RC-44 (the student asked for the answer) get the standard "how did you get it?" reply, not one that uses what the
-  student said, and RC-44's reply does not say why the answer is not given. The author sees these as gaps to fix after review, not as passes.
+* **The tutor replies are from the built-in tutor, not from Gemini**, using the real draft lesson text. The live tutor will word
+  things differently.
+* **Replies now use what the student said next to a wrong answer** (asking for the answer, "I don't understand", the student's own
+  explanation: RC-37, RC-42, RC-44). RC-35 looked generic only because an earlier version of the runner had no lesson text. The wording
+  of these replies is still the author's and still needs a teacher's eye.
 * **Follow-up questions exist only for typed number questions that have a second question in the same skill where the idea gives a different
   wrong answer.** No follow-up was available for RC-01 to RC-04 and RC-12. Multiple-choice and true/false misses (RC-43) do not match any idea.
 * **Cross-lesson ideas are not followed up.** A follow-up never comes from a different skill, because that question may be ahead of what the

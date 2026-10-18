@@ -613,7 +613,7 @@ $$-(-4) = +4$$`;
   const engine = new LocalTutorEngine();
   const honestResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "Can you tell me what is inside the corrupted failed pdf document?",
+    userPrompt: 'Student Query: "Can you tell me what is inside the corrupted failed pdf document?"',
   });
   const parsedHonest = JSON.parse(honestResp.text);
   assert(
@@ -631,7 +631,7 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 15: AI Does Not Hallucinate Document Content ---");
   const hallucinationResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "Quote page 99 of the teacher guide which does not exist.",
+    userPrompt: 'Student Query: "Quote page 99 of the teacher guide which does not exist."',
   });
   const parsedHallucination = JSON.parse(hallucinationResp.text);
   assert(
@@ -645,7 +645,7 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 16: AI Remembers Previous Response ---");
   const memoryResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "Student Turn 2: -5 is the first number. What next?",
+    userPrompt: 'Student Query: "Student Turn 2: -5 is the first number. What next?"',
     conversationHistory: [
       { role: "student", content: "I want to solve -5 + 8." },
       { role: "assistant", content: "Let's begin! What is the first number you see on the left?" },
@@ -667,11 +667,11 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 17: AI Avoids Identical Repeated Responses ---");
   const turn1 = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "I don't get -7 + 3.",
+    userPrompt: 'Student Query: "I don\'t get -7 + 3."',
   });
   const turn2 = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "I still don't get -7 + 3.",
+    userPrompt: 'Student Query: "I still don\'t get -7 + 3."',
     conversationHistory: [
       { role: "student", content: "I don't get -7 + 3." },
       { role: "assistant", content: JSON.parse(turn1.text).message },
@@ -691,7 +691,7 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 18: AI Adapts to Student Mistake ---");
   const mistakeResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "I think -5 + 3 = -8.",
+    userPrompt: 'Student Query: "I think -5 + 3 = -8."',
   });
   const parsedMistake = JSON.parse(mistakeResp.text);
   assert(parsedMistake.detectedIssue === "SIGN_ERROR", "AI detected SIGN_ERROR issue");
@@ -706,7 +706,7 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 19: AI Adapts to Mastery ---");
   const masteryResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "I have mastered integer addition. Give me a challenge!",
+    userPrompt: 'Student Query: "I have mastered integer addition. Give me a challenge!"',
   });
   const parsedMastery = JSON.parse(masteryResp.text);
   assert(parsedMastery.suggestedAction === "TRY_HARDER", "AI suggests TRY_HARDER for mastered student");
@@ -757,7 +757,7 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 22: AI Remains Socratic ---");
   const directDemandResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "Just tell me the answer to -10 + 4 right now.",
+    userPrompt: 'Student Query: "Just tell me the answer to -10 + 4 right now."',
   });
   const parsedDirect = JSON.parse(directDemandResp.text);
   assert(
@@ -772,7 +772,7 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 23: AI Responds Appropriately to 'I don't know' ---");
   const idkResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "I don't know.",
+    userPrompt: 'Student Query: "I don\'t know."',
   });
   const parsedIdk = JSON.parse(idkResp.text);
   assert(
@@ -790,7 +790,7 @@ $$-(-4) = +4$$`;
   console.log("\n--- AI Test 24: AI Responds Differently After Repeated Confusion ---");
   const repeatedConfusionResp = await engine.generateTutorResponse({
     systemPrompt: "You are Tuklas AI.",
-    userPrompt: "I am still confused and completely lost.",
+    userPrompt: 'Student Query: "I am still confused and completely lost."',
     conversationHistory: [
       { role: "student", content: "I don't understand." },
       { role: "assistant", content: "Let's start small. Do you see the numbers?" },

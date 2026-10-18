@@ -197,6 +197,19 @@ console.log("\n5. Fallback tutor: what it does with the student's work");
   t("it says so when a teacher document could not be read", /couldn.t extract its text/.test(failedDoc.message), text(failedDoc));
 
   t("percent and polygon lessons are not integer contexts; an integers lesson is", !isIntegerContext(ctx()) && isIntegerContext(ctx({ lesson: { id: "lsn_01", title: "Understanding Integers" }, groundedLesson: { ...percentLesson, title: "Understanding Integers", learningObjectives: ["Compare integers"] } })));
+
+  console.log("\n5b. The reply uses what the student said next to a wrong answer");
+  const wrong20 = { studentAnswer: "20", previousAttempts: [attempt("20", 1)] };
+  const askR = socraticResponse(ctx({ ...wrong20, studentQuery: "Pakisabi na lang po ang sagot", requestedLanguage: "fil" }));
+  t("asking for the answer is declined kindly, without giving it", /Hindi ko ibibigay/.test(askR.message) && !revealsExpectedAnswer(text(askR), ctx()), text(askR));
+  const askE = socraticResponse(ctx({ ...wrong20, studentQuery: "just tell me the answer" }));
+  t("the same in English", /won't give the final answer/.test(askE.message) && !revealsExpectedAnswer(text(askE), ctx()), text(askE));
+  const lost = socraticResponse(ctx({ ...wrong20, studentQuery: "hindi ko po maintindihan", requestedLanguage: "fil" }));
+  t("'hindi ko po maintindihan' gets a smaller step, not a rule dump", /maliliit na hakbang/.test(lost.message) && /sarili mong salita/.test(lost.guidingQuestion || ""), text(lost));
+  const own = socraticResponse(ctx({ ...wrong20, studentQuery: "20 because 100 minus 80", requestedLanguage: "en" }));
+  t("the student's own explanation is acknowledged and not asked for again", /Thanks for explaining/.test(own.message) && !/How did you get/.test(text(own)) && !revealsExpectedAnswer(text(own), ctx()), text(own));
+  const plain = socraticResponse(ctx(wrong20));
+  t("with no message the reply is unchanged: it asks how they got the answer", /Thanks for trying/.test(plain.message) && !/Thanks for explaining/.test(plain.message));
 }
 
 // ---------------------------------------------------------------- 6. what the AI gets to read

@@ -91,6 +91,7 @@ The ceiling is 0.85.
   next move (`fallbackReason: repeated_reply`).
 * Teachers see each suspicion with its evidence, alternatives, follow-up results and confidence, and can dismiss, confirm or add a
   note (Insights page, Mistakes tab). The list says the catalog is an AI-written draft.
+* A follow-up that is still waiting shows again when the panel opens on that skill (`GET /api/student/misconceptions/pending`).
 * Code: `src/lib/ai/misconceptions/` (catalog, detector, service); table `StudentMisconception` (migration 0002).
 
 **Limits.** The 32 ideas are AI-written drafts that no teacher has reviewed (section 8). Detection and follow-up exist only for typed
@@ -99,11 +100,11 @@ follow-up for 5 of the 39 draft cases that find an idea). Multiple-choice and tr
 
 ## 7. Tests
 
-* `npx tsx scripts/test-tutor-learning-cycle.ts`: 70 checks, no server (calculator, topics, Taglish, answer guard, fallback tutor,
-  lesson text selection, repeat detection, mistake analysis, LaTeX in model replies, hypotheses in the prompt).
+* `npx tsx scripts/test-tutor-learning-cycle.ts`: 75 checks, no server (calculator, topics, Taglish, answer guard, fallback tutor,
+  replies that use what the student said, lesson text selection, repeat detection, mistake analysis, LaTeX in model replies, hypotheses in the prompt).
 * `npx tsx scripts/test-misconception-model.ts`: 31 checks, no server (catalog sanity on the real question bank, which ideas explain which
   answers, ambiguity, confidence, alternatives, follow-up choice, grading of follow-up answers).
-* `APP_URL=... DATABASE_URL=... npx tsx scripts/test-misconception-flow.ts`: 34 checks through the real server and database (suspicion,
+* `APP_URL=... DATABASE_URL=... npx tsx scripts/test-misconception-flow.ts`: 36 checks through the real server and database (suspicion,
   follow-up, support, correction, verification, persisting, ruled out, teacher view, security, mastery untouched). Creates throwaway users:
   use a review or test database.
 * `APP_URL=... npx tsx scripts/audit-tutor-scenarios.ts`: nine scenarios through the real HTTP tutor. It prints what the student would
