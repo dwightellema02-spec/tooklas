@@ -67,13 +67,53 @@ Rules are deterministic and use real evidence (accuracy, hints, repeated mistake
 is the one whose questions are closest to the difficulty the decision asked for (easy, medium, hard), and the app no longer falls back to
 a fixed practice set.
 
-## 6. Tests
+## 6. Suspected misconceptions (P2)
 
-* `npx tsx scripts/test-tutor-learning-cycle.ts`: 64 checks, no server, covering the calculator, topics, Taglish detection, the answer
-  guard, the fallback tutor in each situation, lesson text selection, the mistake analysis and LaTeX in model replies.
-* `APP_URL=... npx tsx scripts/audit-tutor-scenarios.ts`: nine scenarios through the real HTTP tutor (correct answer with flawed
-  reasoning, wrong answer with an addition slip, incomplete, ambiguous, repeated errors, correction after a hint, checkpoint help, no
-  context, conflicting topic). It prints what the student would see; a person judges it.
+A wrong answer is an observation. The system turns it into a **suspicion** only when a catalog idea predicts exactly that wrong answer
+(for example, 80 to 100 answered 20 fits "reports the amount of change" and also "divides by the new value"). Both are kept, with the other
+causes that cannot be ruled out (a slip, a misread question, a guess). One question gives low confidence (at most 0.5); the same idea
+explaining wrong answers on more questions raises it; rival ideas lower it; the student's own matching follow-up answer raises it most.
+The ceiling is 0.85.
 
-**Not done:** an educator-reviewed set of expected answers and misconceptions, many live model samples, and any test with students.
-Those are the next step (P3).
+| Step | What happens | Who decides |
+|---|---|---|
+| SUSPECTED | recorded in the background after a wrong numeric practice answer | the catalog predicts the exact answer |
+| CHECKING | the tutor panel shows a follow-up question on which the ideas would answer differently | the system picks it |
+| SUPPORTED / NOT_SUPPORTED | the student answers it; the server grades it | the student's answer |
+| CORRECTING | the correction (catalog text and the lesson's worked example) and a verification question are shown | the system |
+| RESOLVED / PERSISTING | verification answered correctly, or the same wrong idea again (also when a resolved idea explains a new wrong answer) | the student's answer |
+| DISMISSED | a teacher decided it does not apply (never reopened by the system) | the teacher |
+
+* Follow-up and verification answers are stored in the misconception row, **not** as practice attempts, so mastery stays practice-only.
+  The reply to the student never contains the correct answer, because the question may still be in their practice set.
+* The tutor prompt lists open ideas as hypotheses ("never tell the student they have this misconception"). If the student is still
+  wrong after two replies and the model repeats itself (word overlap above 0.8), the reply is replaced by the built-in tutor's
+  next move (`fallbackReason: repeated_reply`).
+* Teachers see each suspicion with its evidence, alternatives, follow-up results and confidence, and can dismiss, confirm or add a
+  note (Insights page, Mistakes tab). The list says the catalog is an AI-written draft.
+* Code: `src/lib/ai/misconceptions/` (catalog, detector, service); table `StudentMisconception` (migration 0002).
+
+**Limits.** The 32 ideas are AI-written drafts that no teacher has reviewed (section 8). Detection and follow-up exist only for typed
+number questions; a follow-up needs another numeric question in the same skill where the idea gives a different wrong answer (no
+follow-up for 5 of the 39 draft cases that find an idea). Multiple-choice and true/false misses are not matched to ideas.
+
+## 7. Tests
+
+* `npx tsx scripts/test-tutor-learning-cycle.ts`: 70 checks, no server (calculator, topics, Taglish, answer guard, fallback tutor,
+  lesson text selection, repeat detection, mistake analysis, LaTeX in model replies, hypotheses in the prompt).
+* `npx tsx scripts/test-misconception-model.ts`: 31 checks, no server (catalog sanity on the real question bank, which ideas explain which
+  answers, ambiguity, confidence, alternatives, follow-up choice, grading of follow-up answers).
+* `APP_URL=... DATABASE_URL=... npx tsx scripts/test-misconception-flow.ts`: 34 checks through the real server and database (suspicion,
+  follow-up, support, correction, verification, persisting, ruled out, teacher view, security, mastery untouched). Creates throwaway users:
+  use a review or test database.
+* `APP_URL=... npx tsx scripts/audit-tutor-scenarios.ts`: nine scenarios through the real HTTP tutor. It prints what the student would
+  see; a person judges it.
+
+## 8. Educator review (P3)
+
+`docs/TUTOR_EDUCATOR_REVIEW.md` explains the review of the ideas. `npx tsx scripts/run-tutor-review-set.ts` writes
+`docs/tutor-review/TUTOR_REVIEW_CASES.csv`: 49 AI-drafted cases (one per idea, the audit situations, cases that must not create a suspicion)
+with empty verdict columns for teachers. `--summarize <file.csv>` reads the verdicts back. **Status: draft, not reviewed by a teacher.**
+
+**Not done:** teacher review of the catalog and cases, many live model samples, a check of how the tutor replies read to students, and any
+test with students.

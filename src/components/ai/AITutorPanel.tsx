@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { MathText } from "@/components/ui/MathText";
 import { authFetch } from "@/lib/auth/auth-context";
-import type { TutorMessageDTO, AITutorHelpLevel } from "@/lib/ai/types";
+import type { TutorMessageDTO, AITutorHelpLevel, TutorFollowUp } from "@/lib/ai/types";
 import {
   SpeechRecognitionController,
   SpeechSynthesisController,
@@ -61,6 +61,11 @@ export function AITutorPanel({
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   // True when the last reply came from the built-in tutor because the AI model was unavailable.
   const [basicMode, setBasicMode] = useState(false);
+  // A question the tutor asks to find out how the student is thinking (or to check a correction). Graded by the server.
+  const [followUp, setFollowUp] = useState<TutorFollowUp | null>(null);
+  const [followUpAnswer, setFollowUpAnswer] = useState("");
+  const [followUpNote, setFollowUpNote] = useState<string | null>(null);
+  const [followUpBusy, setFollowUpBusy] = useState(false);
   const [inputQuery, setInputQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +146,11 @@ export function AITutorPanel({
           setConversationId(json.data.conversationId);
           setBasicMode(String(json.data.providerInfo?.provider || "").includes("local"));
           setMessages((prev: TutorMessageDTO[]) => [...prev, json.data.message]);
+          if (json.data.followUp) {
+            setFollowUp(json.data.followUp);
+            setFollowUpNote(null);
+            setFollowUpAnswer("");
+          }
           if (json.data.message.hintLevel) {
             setCurrentHintLevel(json.data.message.hintLevel);
           }
@@ -168,6 +178,29 @@ export function AITutorPanel({
     },
     [conversationId, context, isTtsSupported, loading]
   );
+
+  const submitFollowUp = async () => {
+    if (!followUp || followUpBusy || followUpAnswer.trim().length === 0) return;
+    setFollowUpBusy(true);
+    try {
+      const lastTutor = [...messages].reverse().find((m) => m.role === "TUTOR");
+      const res = await authFetch(`/api/student/misconceptions/${followUp.misconceptionId}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer: followUpAnswer.trim(), language: lastTutor && isFilipinoText(lastTutor.content) ? "fil" : "en" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not record your answer.");
+      setFollowUpNote(json.data.message);
+      setFollowUpAnswer("");
+      // A number is needed: keep the same question open. Otherwise move to the next question, if any.
+      if (json.data.outcome !== "NOT_A_NUMBER") setFollowUp(json.data.next || null);
+    } catch (err: unknown) {
+      setFollowUpNote(err instanceof Error ? err.message : "Could not record your answer.");
+    } finally {
+      setFollowUpBusy(false);
+    }
+  };
 
   // Stable callback refs so SpeechRecognition is NOT recreated/aborted on every re-render
   const recognitionCallbacksRef = useRef<{
@@ -468,6 +501,50 @@ export function AITutorPanel({
               <div className="flex items-center gap-2 p-3 bg-white rounded-2xl border border-emerald-100 w-fit text-slate-600 text-xs shadow-xs animate-pulse">
                 <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
                 <span>Tuklas AI is thinking...</span>
+              </div>
+            )}
+
+            {(followUp || followUpNote) && (
+              <div className="p-3 rounded-2xl bg-white border border-teal-200 text-slate-800 text-xs shadow-xs space-y-2" data-testid="tutor-follow-up">
+                {followUpNote && <p className="text-teal-800 font-medium">{followUpNote}</p>}
+                {followUp && (
+                  <>
+                    <p className="text-[10px] uppercase font-bold tracking-wider text-teal-700">
+                      {followUp.kind === "VERIFICATION" ? "Try this one" : "Quick question"}
+                    </p>
+                    {followUp.correction && (
+                      <div className="rounded-lg bg-teal-50/70 border border-teal-100 p-2 leading-relaxed">
+                        <MathText content={followUp.correction} />
+                      </div>
+                    )}
+                    <div className="leading-relaxed">
+                      <MathText content={followUp.prompt} />
+                    </div>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        submitFollowUp();
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={followUpAnswer}
+                        onChange={(e) => setFollowUpAnswer(e.target.value)}
+                        maxLength={60}
+                        disabled={followUpBusy}
+                        placeholder="Your answer"
+                        aria-label="Answer to the tutor's question"
+                        className="flex-1 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 disabled:opacity-50"
+                      />
+                      <Button type="submit" size="sm" disabled={followUpBusy || followUpAnswer.trim().length === 0} className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white">
+                        {followUpBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Check"}
+                      </Button>
+                    </form>
+                    <p className="text-[10px] text-slate-500">This question helps me understand your thinking. It does not change your score.</p>
+                  </>
+                )}
               </div>
             )}
 

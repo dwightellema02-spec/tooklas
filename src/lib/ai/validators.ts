@@ -189,6 +189,24 @@ function sanitizeMessage(text: string): string {
     .slice(0, 2000); // Cost/DoS safeguard: limit single message length
 }
 
+const wordSet = (t: string) => new Set(t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 2));
+
+/**
+ * True when a reply says nearly the same thing as one of the tutor's last messages (word overlap above 0.8). A student who
+ * is still wrong after two replies needs a different move, not the same hint again.
+ */
+export function isRepeatedReply(reply: string, previousTutorMessages: string[]): boolean {
+  const a = wordSet(reply);
+  if (a.size < 6) return false;
+  return previousTutorMessages.some((prev) => {
+    const b = wordSet(prev);
+    if (b.size === 0) return false;
+    let shared = 0;
+    for (const w of a) if (b.has(w)) shared++;
+    return shared / (a.size + b.size - shared) > 0.8;
+  });
+}
+
 /** The built-in reply used when a model reply is missing, unreadable, in the wrong language or gave the answer away. */
 export function generateFallbackTutorResponse(context: AITutorContext, opts: { avoidAnswer?: boolean; reason?: string } = {}): StructuredTutorResponse {
   return { ...fallbackCore(context), fallbackReason: opts.reason || "fallback" };

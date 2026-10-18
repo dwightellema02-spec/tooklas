@@ -299,6 +299,16 @@ export function buildTutorUserPrompt(context: AITutorContext): string {
           .join("\n")
       : "";
 
+  const open = context.openMisconceptions;
+  const misconceptionSection =
+    open && open.length > 0
+      ? [
+          `### Ideas That Might Explain The Student's Wrong Answers (HYPOTHESES from the system, NOT facts):`,
+          ...open.slice(0, 3).map((m) => `- "${m.belief}" (status ${m.status}, confidence ${m.confidence})`),
+          `Never tell the student they have this misconception or that they "believe" it. You may ask a question whose answer would show whether they think this way, in your own words, without giving the answer. The system also asks the student a separate check question; do not repeat it.`,
+        ].join("\n")
+      : "";
+
   const sourcePrioritySection = sourcePriority
     ? `### Source Priority:\n${sourcePriority.join("\n")}`
     : "";
@@ -318,6 +328,7 @@ export function buildTutorUserPrompt(context: AITutorContext): string {
     attemptSection,
     "",
     workSection,
+    misconceptionSection,
     "",
     reliabilitySection,
     "",

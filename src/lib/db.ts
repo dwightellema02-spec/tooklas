@@ -5589,6 +5589,128 @@ export const dbService = {
     return [];
   },
 
+  // ---------------------------------------------------------------- suspected misconceptions
+  // Used only by src/lib/ai/misconceptions/service.ts. Every function returns an empty result without a database.
+
+  /** The student's wrong practice answers on numeric questions of a skill, oldest first. */
+  async getWrongNumericAttemptsForSkill(studentId: string, skillId: string, limit: number = 40) {
+    try {
+      if (!hasValidDatabaseUrl) return [];
+      const rows = await prisma.questionAttempt.findMany({
+        where: { studentId, skillId, isCorrect: false, question: { type: "NUMERIC_INPUT" } },
+        include: { question: { select: { id: true, prompt: true, questionData: true } } },
+        orderBy: { submittedAt: "desc" },
+        take: limit,
+      });
+      return rows.reverse().map((r) => {
+        let expected: string | undefined;
+        try {
+          const d = JSON.parse(r.question.questionData || "{}");
+          expected = d.correctAnswer === undefined || d.correctAnswer === null ? undefined : String(d.correctAnswer);
+        } catch {
+          expected = undefined;
+        }
+        return { attemptId: r.id, questionId: r.questionId, prompt: r.question.prompt, answer: r.answer, expected };
+      });
+    } catch (e) {
+      console.warn("getWrongNumericAttemptsForSkill failed:", e);
+      return [];
+    }
+  },
+
+  /** Published numeric questions of a skill, with the ids the student has already answered. */
+  async getNumericQuestionPoolForSkill(studentId: string, skillId: string) {
+    try {
+      if (!hasValidDatabaseUrl) return { pool: [], answeredIds: [] as string[] };
+      const [questions, attempts] = await Promise.all([
+        prisma.question.findMany({ where: { skillId, status: "PUBLISHED", type: "NUMERIC_INPUT" }, orderBy: { createdAt: "asc" } }),
+        prisma.questionAttempt.findMany({ where: { studentId, skillId }, select: { questionId: true } }),
+      ]);
+      const pool = questions.flatMap((q) => {
+        try {
+          const d = JSON.parse(q.questionData || "{}");
+          if (d.correctAnswer === undefined || d.correctAnswer === null) return [];
+          return [{ id: q.id, prompt: q.prompt, expected: String(d.correctAnswer), difficulty: q.difficulty as string }];
+        } catch {
+          return [];
+        }
+      });
+      return { pool, answeredIds: [...new Set(attempts.map((a) => a.questionId))] };
+    } catch (e) {
+      console.warn("getNumericQuestionPoolForSkill failed:", e);
+      return { pool: [], answeredIds: [] as string[] };
+    }
+  },
+
+  /** One published numeric question (for a stored follow-up), or null. */
+  async getNumericQuestion(questionId: string) {
+    try {
+      if (!hasValidDatabaseUrl) return null;
+      const q = await prisma.question.findFirst({ where: { id: questionId, status: "PUBLISHED", type: "NUMERIC_INPUT" } });
+      if (!q) return null;
+      const d = JSON.parse(q.questionData || "{}");
+      if (d.correctAnswer === undefined || d.correctAnswer === null) return null;
+      return { id: q.id, prompt: q.prompt, expected: String(d.correctAnswer), difficulty: q.difficulty as string };
+    } catch {
+      return null;
+    }
+  },
+
+  async listStudentMisconceptions(params: { studentId: string; skillId?: string | null; statuses?: string[] }) {
+    try {
+      if (!hasValidDatabaseUrl) return [];
+      return await prisma.studentMisconception.findMany({
+        where: {
+          studentId: params.studentId,
+          ...(params.skillId ? { skillId: params.skillId } : {}),
+          ...(params.statuses ? { status: { in: params.statuses as any[] } } : {}),
+        },
+        include: { skill: { select: { title: true } } },
+        orderBy: { updatedAt: "desc" },
+      });
+    } catch (e) {
+      console.warn("listStudentMisconceptions failed:", e);
+      return [];
+    }
+  },
+
+  async getStudentMisconception(id: string) {
+    try {
+      if (!hasValidDatabaseUrl) return null;
+      return await prisma.studentMisconception.findUnique({ where: { id } });
+    } catch {
+      return null;
+    }
+  },
+
+  async createStudentMisconception(data: {
+    studentId: string;
+    skillId: string;
+    lessonId?: string | null;
+    conceptKey: string;
+    concept: string;
+    belief: string;
+    confidence: number;
+    observation: string;
+    observedAnswers: string;
+    evidenceAttemptIds: string;
+    alternatives: string;
+    correction: string;
+  }) {
+    if (!hasValidDatabaseUrl) return null;
+    return prisma.studentMisconception.create({ data: { ...data, checks: "[]" } });
+  },
+
+  async findStudentMisconception(studentId: string, skillId: string, conceptKey: string) {
+    if (!hasValidDatabaseUrl) return null;
+    return prisma.studentMisconception.findUnique({ where: { studentId_skillId_conceptKey: { studentId, skillId, conceptKey } } });
+  },
+
+  async updateStudentMisconception(id: string, data: Record<string, any>) {
+    if (!hasValidDatabaseUrl) return null;
+    return prisma.studentMisconception.update({ where: { id }, data });
+  },
+
   /**
    * Get previous attempts for a student on a specific question
    */

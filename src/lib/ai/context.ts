@@ -7,6 +7,7 @@ import { dbService } from "../db";
 import { findRelevantDocumentChunks } from "../documents/document-extractor";
 import { findArithmeticSlips } from "./arithmetic";
 import { detectTopicConflict, topicsIn } from "./topics";
+import { openForTutor as openMisconceptionsForTutor } from "./misconceptions/service";
 import type {
   AITutorContext,
   AITutorInteractParams,
@@ -531,6 +532,17 @@ export async function buildAITutorContext(params: AITutorInteractParams): Promis
     ? "student_message"
     : "unknown";
 
+  // 15. Suspected misconceptions on this skill (hypotheses only; the student's own answers decide)
+  let openMisconceptions: AITutorContext["openMisconceptions"];
+  if (skillContext?.id) {
+    try {
+      const open = await openMisconceptionsForTutor(student.id, skillContext.id);
+      if (open.length > 0) openMisconceptions = open;
+    } catch (e) {
+      console.warn("Loading open misconceptions failed:", e);
+    }
+  }
+
   return {
     student,
     curriculum,
@@ -553,6 +565,7 @@ export async function buildAITutorContext(params: AITutorInteractParams): Promis
     currentSection,
     checkpointHistory,
     studentWork: { explanations, arithmeticSlips },
+    openMisconceptions,
     contextStatus: {
       lessonKnown,
       questionKnown,

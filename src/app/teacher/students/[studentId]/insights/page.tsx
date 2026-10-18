@@ -3,6 +3,7 @@ import { useAuth, authFetch } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { MathText } from "@/components/ui/MathText";
+import { MisconceptionList } from "@/components/insights/MisconceptionList";
 import {
   ArrowLeft,
   Sparkles,
@@ -597,6 +598,7 @@ export default function TeacherStudentInsightsPage({
         {/* TAB 2: MISTAKE PATTERNS & EVIDENCE */}
         {activeTab === "MISTAKES" && (
           <div className="space-y-6">
+            <MisconceptionList studentId={studentId} />
             {/* Category Filters */}
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
           {[

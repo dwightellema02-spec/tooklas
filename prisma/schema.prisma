@@ -156,6 +156,7 @@ model User {
   questionAttempts        QuestionAttempt[]                @relation("StudentQuestionAttempts")
   aiConversations         AITutorConversation[]            @relation("StudentAITutorConversations")
   mistakeAnalyses         MistakeAnalysis[]                @relation("StudentMistakeAnalyses")
+  misconceptions          StudentMisconception[]
   adaptiveRecommendations AdaptiveRecommendation[]         @relation("StudentAdaptiveRecommendations")
   teacherOverrides        AdaptiveRecommendationOverride[] @relation("TeacherRecommendationOverrides")
   skillMasteries          SkillMastery[]                   @relation("StudentSkillMasteries")
@@ -354,6 +355,7 @@ model Skill {
   mistakeAnalyses         MistakeAnalysis[]
   adaptiveRecommendations AdaptiveRecommendation[]
   masteries               SkillMastery[]
+  misconceptions          StudentMisconception[]
 
   // Prerequisite self-referential relations
   prerequisites SkillPrerequisite[] @relation("SkillPrerequisites")
@@ -704,6 +706,51 @@ model MistakeAnalysisEvidence {
   @@unique([analysisId, attemptId])
   @@index([analysisId])
   @@index([attemptId])
+}
+
+// A suspected misconception: an idea that would explain the student's wrong answers, kept with its evidence, the
+// alternatives that were not ruled out, and what happened when the student was asked a follow-up question.
+// Written by src/lib/ai/misconceptions/service.ts. The catalog behind it is a draft until a teacher reviews it.
+model StudentMisconception {
+  id                     String              @id @default(uuid())
+  studentId              String
+  skillId                String
+  lessonId               String? // lesson the student was in when it was first suspected
+  conceptKey             String // catalog id, e.g. "pct.change.reports-amount"
+  concept                String // short name shown to teachers
+  belief                 String // the idea the student may hold, in plain words
+  status                 MisconceptionStatus @default(SUSPECTED)
+  confidence             Float // 0.0 to 0.85
+  observation            String // plain fact: what was asked and answered
+  observedAnswers        String // JSON: [{attemptId, questionId, answer, predicted}]
+  evidenceAttemptIds     String // JSON: attempt ids
+  alternatives           String // JSON: [{id, text, kind}]
+  diagnosticQuestionId   String?
+  verificationQuestionId String?
+  correction             String // JSON: {en, fil}
+  checks                 String // JSON: follow-up questions asked and answered, in order
+  teacherNote            String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  resolvedAt             DateTime?
+
+  student User  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skill   Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, skillId, conceptKey])
+  @@index([studentId, skillId, status])
+  @@index([status])
+}
+
+enum MisconceptionStatus {
+  SUSPECTED // seen in the answers only
+  CHECKING // a diagnostic question was asked and is waiting for an answer
+  SUPPORTED // the student's own follow-up answer matched the idea
+  NOT_SUPPORTED // the follow-up answer did not match
+  CORRECTING // a correction was given and a verification question is waiting
+  RESOLVED // the verification question was answered correctly
+  PERSISTING // the same wrong idea showed up again after the correction
+  DISMISSED // a teacher decided it does not apply
 }
 
 enum MistakeCategory {

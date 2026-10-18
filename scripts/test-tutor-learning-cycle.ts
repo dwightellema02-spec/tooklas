@@ -11,7 +11,7 @@ import { findArithmeticSlips } from "../src/lib/ai/arithmetic.ts";
 import { detectTopicConflict } from "../src/lib/ai/topics.ts";
 import { detectLanguagePreference, selectGroundingBlocks, isTeacherReferenceOnly } from "../src/lib/ai/context.ts";
 import { socraticResponse, revealsExpectedAnswer, answersMatch, isIntegerContext } from "../src/lib/ai/socratic-engine.ts";
-import { validateTutorOutput } from "../src/lib/ai/validators.ts";
+import { isRepeatedReply, validateTutorOutput } from "../src/lib/ai/validators.ts";
 import { runDeterministicAnalysis, generateDeterministicMistakeCategory } from "../src/lib/ai/deterministic-analyzer.ts";
 import { buildTutorUserPrompt } from "../src/lib/ai/prompts.ts";
 import { parseModelJson } from "../src/lib/ai/json-repair.ts";
@@ -220,6 +220,19 @@ console.log("\n6. Lesson text selection for the prompt");
   const prompt = buildTutorUserPrompt(ctx({ studentWork: { explanations: ["100+110+120+90 = 430"], arithmeticSlips: findArithmeticSlips("100+110+120+90 = 430") } }));
   t("the prompt carries the verified observation and the reliability section", /Verified Observation/.test(prompt) && /Context Reliability/.test(prompt));
   t("the prompt does not claim a topic when no lesson is known", !/Integers/.test(buildTutorUserPrompt(ctx({ curriculum: {}, lesson: undefined, groundedLesson: undefined, contextStatus: { lessonKnown: false, questionKnown: false, topicSource: "unknown" } }))));
+  const mp = buildTutorUserPrompt(ctx({ openMisconceptions: [{ id: "m1", conceptKey: "pct.change.reports-amount", concept: "Reports the amount of change", belief: "The percentage change is the amount of change itself.", status: "SUSPECTED", confidence: 0.3 }] }));
+  t("suspected ideas reach the prompt as hypotheses, not facts", /HYPOTHESES/.test(mp) && /Never tell the student/.test(mp) && /amount of change itself/.test(mp));
+  t("no section is added when nothing is suspected", !/HYPOTHESES/.test(prompt));
+}
+
+// ---------------------------------------------------------------- 6b. repeated replies
+{
+  console.log("\n6b. A repeated reply is detected");
+  const hint = "Look at the original value first. What do you get when you divide the increase by the original value?";
+  t("the same reply is a repeat", isRepeatedReply(hint, ["Something else entirely about angles and polygons here today", hint]));
+  t("a lightly reworded reply is still a repeat", isRepeatedReply(hint + " Try it.", [hint]));
+  t("a different move is not a repeat", !isRepeatedReply("Let us use the worked example: a price rose from 200 to 280. Find the increase first, then compare it with 200.", [hint]));
+  t("very short replies are never called repeats", !isRepeatedReply("Try again.", ["Try again."]));
 }
 
 // ---------------------------------------------------------------- 7. mistake analysis

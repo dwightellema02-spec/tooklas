@@ -4,8 +4,9 @@ import { dbService } from "../db";
 import { buildAITutorContext } from "./context";
 import { buildTutorSystemPrompt, buildTutorUserPrompt } from "./prompts";
 import { getAIProvider, LocalTutorEngine } from "./provider";
-import { validateTutorOutput } from "./validators";
+import { generateFallbackTutorResponse, isRepeatedReply, validateTutorOutput } from "./validators";
 import { MistakeAnalyzerService } from "./mistake-analyzer";
+import { detect as detectMisconceptions, nextFollowUp } from "./misconceptions/service";
 import type {
   AITutorInteractParams,
   TutorAPIResponse,
@@ -152,7 +153,15 @@ export class AITutorService {
     }
 
     // 9. Validate & Sanitize Output
-    const structured = validateTutorOutput(rawResponse.text, context);
+    let structured = validateTutorOutput(rawResponse.text, context);
+
+    // 9b. A student who is still wrong after two replies needs a different move, not the same reply again.
+    if (!structured.fallbackReason && context.previousAttempts.filter((a) => !a.isCorrect).length >= 2) {
+      const lastTutor = context.recentMessages.filter((m) => m.role === "TUTOR").slice(-2).map((m) => m.content);
+      if (isRepeatedReply(structured.message, lastTutor)) {
+        structured = generateFallbackTutorResponse(context, { reason: "repeated_reply" });
+      }
+    }
 
     const startTime = Date.now();
 
@@ -189,6 +198,18 @@ export class AITutorService {
       }).catch((err) => console.warn("Background analysis after tutor turn failed:", err));
     }
 
+    // 10c. When the student's wrong answers fit a known idea, put a follow-up question in front of them so their own
+    // answer, not our guess, shows which idea (if any) they are using. Never blocks the reply if it fails.
+    let followUp: TutorAPIResponse["followUp"] = null;
+    if (analysisSkillId && context.previousAttempts.some((a) => !a.isCorrect)) {
+      try {
+        await detectMisconceptions({ studentId, skillId: analysisSkillId, lessonId: params.lessonId || context.lesson?.id });
+        followUp = await nextFollowUp({ studentId, skillId: analysisSkillId, language: context.requestedLanguage });
+      } catch (err) {
+        console.warn("Misconception follow-up failed:", err);
+      }
+    }
+
     // 11. Record hint usage on QuestionAttempt for research analytics
     if (questionId) {
       await dbService.markHintUsedOnQuestionAttempt(studentId, questionId, practiceSessionId);
@@ -211,9 +232,11 @@ export class AITutorService {
       },
       providerInfo: {
         // When the model's reply was replaced by the built-in tutor, say so instead of naming the model.
-        provider: structured.fallbackReason ? "local-pedagogical-engine" : rawResponse.provider,
+        // A repeated reply is swapped for the built-in tutor's different move, which is not the model being unavailable.
+        provider: structured.fallbackReason && structured.fallbackReason !== "repeated_reply" ? "local-pedagogical-engine" : rawResponse.provider,
         model: structured.fallbackReason ? "built-in (replaced " + rawResponse.provider + ": " + structured.fallbackReason + ")" : rawResponse.model,
       },
+      followUp,
       rateLimit: {
         remaining: rateLimit.remaining,
         resetInSeconds: rateLimit.resetInSeconds,

@@ -18,6 +18,7 @@ import { LessonStatus, UserRole } from "@prisma/client";
 import { AITutorService } from "./src/lib/ai/tutor.ts";
 import { PracticeQuestionGenerator } from "./src/lib/ai/practice-generator.ts";
 import { MistakeAnalyzerService } from "./src/lib/ai/mistake-analyzer.ts";
+import * as Misconceptions from "./src/lib/ai/misconceptions/service.ts";
 import { AdaptiveEngine } from "./src/lib/adaptive/index.ts";
 import { MasteryEngine } from "./src/lib/mastery/index.ts";
 import { StudentDashboardService } from "./src/lib/dashboard/index.ts";
@@ -1901,6 +1902,14 @@ app.post("/api/practice/:id/answer", async (req: Request, res: Response) => {
       studentId,
     });
 
+    // A wrong numeric answer may fit a known wrong idea: record it in the background (never delays the answer).
+    if (result && (result as any).isCorrect === false) {
+      dbService
+        .getQuestionById(questionId, false)
+        .then((q: any) => (q?.skillId ? Misconceptions.detect({ studentId, skillId: q.skillId, lessonId: q.lessonId }) : undefined))
+        .catch((err) => console.warn("Background misconception detection failed:", err));
+    }
+
     return res.json({ data: result });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to process question answer";
@@ -2063,6 +2072,76 @@ app.post("/api/ai/tutor", aiEndpointRateLimiter.middleware(), async (req: Reques
     return res.status(500).json({
       error: "The AI Tutor is temporarily unavailable. You can continue the lesson and try again later.",
     });
+  }
+});
+
+// The student answers a follow-up question the tutor put in front of them. Graded on the server; stored with the
+// misconception, never as a practice attempt (mastery stays practice-only). Own rows only.
+app.post("/api/student/misconceptions/:id/answer", aiEndpointRateLimiter.middleware(), async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      return res.status(401).json({ error: "Unauthorized: Please log in." });
+    }
+    const answer = req.body?.answer;
+    if (answer === undefined || answer === null || String(answer).trim() === "" || String(answer).length > 60) {
+      return res.status(400).json({ error: "A short answer is required." });
+    }
+    const result = await Misconceptions.answerFollowUp({
+      studentId: session.userId,
+      misconceptionId: req.params.id,
+      answer: String(answer),
+      language: req.body?.language === "fil" ? "fil" : "en",
+    });
+    return res.json({ data: result });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to record the answer";
+    return res.status(400).json({ error: message });
+  }
+});
+
+// Teacher/Admin: suspected misconceptions for one student, with the evidence and the alternatives not ruled out.
+app.get("/api/teacher/students/:studentId/misconceptions", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
+      return res.status(403).json({ error: "Forbidden: Teacher or Admin privileges required." });
+    }
+    const { studentId } = req.params;
+    if (!(await TeacherService.isTeacherAuthorizedForStudent(session.userId, studentId, session.role))) {
+      return res.status(403).json({ error: "Forbidden: You are not authorized to view this student." });
+    }
+    const skillId = typeof req.query.skillId === "string" ? req.query.skillId : undefined;
+    return res.json({ data: await Misconceptions.listForTeacher(studentId, skillId) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to load misconceptions";
+    return res.status(500).json({ error: message });
+  }
+});
+
+// Teacher/Admin: dismiss a suspected misconception, confirm it, or leave a note.
+app.patch("/api/teacher/students/:studentId/misconceptions/:id", async (req: Request, res: Response) => {
+  try {
+    const session = getSessionFromRequest(req);
+    if (!session || (session.role !== "TEACHER" && session.role !== "ADMIN")) {
+      return res.status(403).json({ error: "Forbidden: Teacher or Admin privileges required." });
+    }
+    const { studentId, id } = req.params;
+    if (!(await TeacherService.isTeacherAuthorizedForStudent(session.userId, studentId, session.role))) {
+      return res.status(403).json({ error: "Forbidden: You are not authorized to change this student's records." });
+    }
+    const { status, teacherNote } = req.body || {};
+    if (status !== undefined && !["DISMISSED", "SUPPORTED", "SUSPECTED"].includes(status)) {
+      return res.status(400).json({ error: "status must be DISMISSED, SUPPORTED or SUSPECTED." });
+    }
+    const updated = await Misconceptions.teacherUpdate(id, studentId, { status, teacherNote });
+    if (!updated) {
+      return res.status(404).json({ error: "Misconception not found for this student." });
+    }
+    return res.json({ data: { id: updated.id, status: updated.status, teacherNote: updated.teacherNote } });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to update the misconception";
+    return res.status(500).json({ error: message });
   }
 });
 

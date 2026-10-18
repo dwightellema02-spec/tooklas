@@ -180,6 +180,17 @@ export interface AITutorContext {
   };
   /** The student's checkpoint results in this lesson. */
   checkpointHistory?: Array<{ blockId: string; attempts: number; correct: boolean }>;
+  /** Ideas that would explain this student's wrong answers on the skill. Hypotheses to ask about, never facts. */
+  openMisconceptions?: Array<{ id: string; conceptKey: string; concept: string; belief: string; status: string; confidence: number }>;
+}
+
+/** A question the tutor panel puts in front of the student to tell suspected ideas apart, or to check a correction. */
+export interface TutorFollowUp {
+  kind: "DIAGNOSTIC" | "VERIFICATION";
+  misconceptionId: string;
+  questionId: string;
+  prompt: string;
+  correction?: string;
 }
 
 export interface StructuredTutorResponse {
@@ -259,6 +270,8 @@ export interface TutorAPIResponse {
     provider: string;
     model: string;
   };
+  /** A follow-up question for the student, when the tutor suspects a misconception it should check. */
+  followUp?: TutorFollowUp | null;
   rateLimit?: {
     remaining: number;
     resetInSeconds: number;
