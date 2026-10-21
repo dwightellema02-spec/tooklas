@@ -91,6 +91,9 @@ The ceiling is 0.85.
   next move (`fallbackReason: repeated_reply`).
 * Teachers see each suspicion with its evidence, alternatives, follow-up results and confidence, and can dismiss, confirm or add a
   note (Insights page, Mistakes tab). The list says the catalog is an AI-written draft.
+* When a student's answer to a check question is not what the asked idea predicts but is exactly what a rival idea of theirs predicts, the
+  rival is the one supported. An idea that is missed on two check questions becomes NOT_SUPPORTED and is no longer asked about; ideas that
+  have been asked about least are asked first.
 * A follow-up that is still waiting shows again when the panel opens on that skill (`GET /api/student/misconceptions/pending`).
 * Code: `src/lib/ai/misconceptions/` (catalog, detector, service); table `StudentMisconception` (migration 0002).
 
@@ -104,7 +107,7 @@ follow-up for 5 of the 39 draft cases that find an idea). Multiple-choice and tr
   replies that use what the student said, lesson text selection, repeat detection, mistake analysis, LaTeX in model replies, hypotheses in the prompt).
 * `npx tsx scripts/test-misconception-model.ts`: 31 checks, no server (catalog sanity on the real question bank, which ideas explain which
   answers, ambiguity, confidence, alternatives, follow-up choice, grading of follow-up answers).
-* `APP_URL=... DATABASE_URL=... npx tsx scripts/test-misconception-flow.ts`: 36 checks through the real server and database (suspicion,
+* `APP_URL=... DATABASE_URL=... npx tsx scripts/test-misconception-flow.ts`: 41 checks through the real server and database (suspicion,
   follow-up, support, correction, verification, persisting, ruled out, teacher view, security, mastery untouched). Creates throwaway users:
   use a review or test database.
 * `APP_URL=... npx tsx scripts/audit-tutor-scenarios.ts`: nine scenarios through the real HTTP tutor. It prints what the student would

@@ -155,6 +155,39 @@ const vq = await prisma.question.findUniqueOrThrow({ where: { id: dNext.question
 const dVer = await answerFollow(D.tok, fuD.misconceptionId, String(entD.predict(vq.prompt)));
 t("the same wrong idea on the verification question is PERSISTING", dVer.b.data?.outcome === "PREDICTED_ERROR" && dVer.b.data?.status === "PERSISTING", JSON.stringify(dVer.b));
 
+console.log("\n8b. An answer that fits the OTHER suspected idea supports that idea");
+const G = await newStudent("g");
+const sessG = await startSession(G.tok);
+await practiceAnswer(G.tok, sessG, Q1, "20");
+await sleep(1500);
+const fuG = (await askTutor(G.tok, sessG, Q1, "20")).b.data?.followUp;
+const rowsG0 = await rows(G.id);
+const askedRow = rowsG0.find((r) => r.id === fuG.misconceptionId)!;
+const rivalRow = rowsG0.find((r) => r.id !== fuG.misconceptionId)!;
+const gq = await prisma.question.findUniqueOrThrow({ where: { id: fuG.questionId } });
+const rivalAnswer = MISCONCEPTION_BY_ID.get(rivalRow.conceptKey)!.predict(gq.prompt);
+const gRes = await answerFollow(G.tok, fuG.misconceptionId, String(rivalAnswer));
+const rivalAfter = await prisma.studentMisconception.findUnique({ where: { id: rivalRow.id } });
+const askedAfter = await prisma.studentMisconception.findUnique({ where: { id: askedRow.id } });
+t("the answer the asked idea does NOT predict, but the rival does, counts for the rival", ["SUPPORTED", "CORRECTING"].includes(rivalAfter!.status) && JSON.parse(rivalAfter!.checks).some((c: any) => c.outcome === "PREDICTED_ERROR" && c.questionId === fuG.questionId), `${rivalAfter?.status} ${rivalAfter?.checks}`);
+t("the asked idea is not marked supported", askedAfter!.status !== "SUPPORTED" && askedAfter!.status !== "CORRECTING", askedAfter?.status);
+t("the next question is a correction and verification for the rival", gRes.b.data?.next?.kind === "VERIFICATION" && gRes.b.data?.next?.misconceptionId === rivalRow.id, JSON.stringify(gRes.b).slice(0, 200));
+
+console.log("\n8c. Answers that match neither idea end the questioning");
+const H = await newStudent("h");
+const sessH = await startSession(H.tok);
+await practiceAnswer(H.tok, sessH, Q1, "20");
+await sleep(1500);
+let fuH = (await askTutor(H.tok, sessH, Q1, "20")).b.data?.followUp;
+let rounds = 0;
+while (fuH && rounds < 8) {
+  fuH = (await answerFollow(H.tok, fuH.misconceptionId, "999999")).b.data?.next;
+  rounds++;
+}
+const rowsH = await rows(H.id);
+t("the questions stop after a few misses (not endless)", rounds <= 6 && !fuH, `rounds=${rounds}`);
+t("ideas the student's answers did not fit end NOT_SUPPORTED; none is left waiting (CHECKING) or treated as supported", rowsH.length >= 2 && rowsH.some((r) => r.status === "NOT_SUPPORTED") && rowsH.every((r) => ["NOT_SUPPORTED", "SUSPECTED"].includes(r.status)), rowsH.map((r) => r.status).join(","));
+
 console.log("\n9. Teacher view and decisions");
 const adminEmail = `mis-admin-${Date.now()}@example.invalid`;
 const reg = await j("/api/auth/register", { method: "POST", body: JSON.stringify({ name: "Mis Admin", email: adminEmail, password: PW }) });

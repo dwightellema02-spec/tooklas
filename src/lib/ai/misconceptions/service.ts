@@ -15,6 +15,8 @@ import {
   classifyFollowUpAnswer,
   confidenceFor,
   explainAttempts,
+  numberOf,
+  sameNumber,
   selectFollowUp,
   type Alternative,
   type FollowUpOutcome,
@@ -43,6 +45,7 @@ export interface MisconceptionFollowUp {
 const OPEN = ["SUSPECTED", "CHECKING", "SUPPORTED", "CORRECTING", "PERSISTING"];
 const MAX_VERIFICATIONS = 3;
 const MAX_NEW_PER_RUN = 3;
+const MAX_MISSED_CHECKS = 2;
 
 const parse = <T,>(text: string | null | undefined, fallback: T): T => {
   try {
@@ -198,7 +201,9 @@ export async function nextFollowUp(params: { studentId: string; skillId: string;
   }
 
   // 3. a suspicion needs a diagnostic question that separates it from the other ideas
-  const suspected = rows.filter((x) => x.status === "SUSPECTED").sort((a, b) => b.confidence - a.confidence);
+  // Ideas that have been asked about least come first, so one idea is not drilled while its rival waits.
+  const asked = (r: (typeof rows)[number]) => parse<StoredCheck[]>(r.checks, []).filter((c) => c.kind === "DIAGNOSTIC").length;
+  const suspected = rows.filter((x) => x.status === "SUSPECTED").sort((a, b) => asked(a) - asked(b) || b.confidence - a.confidence);
   for (const r of suspected) {
     const entry = MISCONCEPTION_BY_ID.get(r.conceptKey)!;
     const rivalIds = parse<Alternative[]>(r.alternatives, []).filter((a) => a.kind === "catalog").map((a) => a.id);
@@ -222,6 +227,40 @@ export interface FollowUpResult {
 }
 
 const say = (lang: Lang, en: string, fil: string) => (lang === "fil" ? fil : en);
+
+/**
+ * If the student's answer to a check question is exactly what ANOTHER open idea of theirs predicts, that idea is supported
+ * by their own answer. Returns true when one was found.
+ */
+async function supportRivalFromAnswer(row: { id: string; studentId: string; skillId: string }, question: PoolQuestion, answer: string): Promise<boolean> {
+  const given = numberOf(answer);
+  const right = numberOf(question.expected);
+  if (given === null || (right !== null && sameNumber(given, right))) return false;
+  const others = (await dbService.listStudentMisconceptions({ studentId: row.studentId, skillId: row.skillId, statuses: ["SUSPECTED", "CHECKING"] })).filter((r) => r.id !== row.id);
+  let found = false;
+  for (const r of others) {
+    const entry = MISCONCEPTION_BY_ID.get(r.conceptKey);
+    let predicted: number | null = null;
+    try {
+      predicted = entry ? entry.predict(question.prompt) : null;
+    } catch {
+      predicted = null;
+    }
+    if (predicted === null || !sameNumber(predicted, given)) continue;
+    const checks = parse<StoredCheck[]>(r.checks, []);
+    checks.push({ kind: "DIAGNOSTIC", questionId: question.id, answer: answer.slice(0, 60), outcome: "PREDICTED_ERROR", at: new Date().toISOString() });
+    const distinct = new Set(parse<{ questionId: string }[]>(r.observedAnswers, []).map((o) => o.questionId)).size || 1;
+    const rivals = parse<Alternative[]>(r.alternatives, []).filter((a) => a.kind === "catalog").length;
+    await dbService.updateStudentMisconception(r.id, {
+      status: "SUPPORTED",
+      diagnosticQuestionId: null,
+      checks: JSON.stringify(checks),
+      confidence: confidenceFor({ distinctQuestions: distinct, rivals, supportedByFollowUp: true }),
+    });
+    found = true;
+  }
+  return found;
+}
 
 export async function answerFollowUp(params: { studentId: string; misconceptionId: string; answer: string; language?: Lang }): Promise<FollowUpResult> {
   const lang: Lang = params.language === "fil" ? "fil" : "en";
@@ -263,9 +302,21 @@ export async function answerFollowUp(params: { studentId: string; misconceptionI
       patch.confidence = confidenceFor({ distinctQuestions: distinct, rivals, supportedByFollowUp: true });
       message = say(lang, "Thank you. That is not the answer yet, but it shows me how you are working it out.", "Salamat po. Hindi pa iyan ang sagot, pero nakita ko kung paano mo ito ginagawa.");
     } else {
-      patch.status = "SUSPECTED"; // a different mistake: this question did not settle it
+      // The answer did not match this idea. It may match a rival the student is also suspected of: the follow-up
+      // question was chosen so that the ideas answer differently, so the student's answer says which one it fits.
+      const rivalSupported = await supportRivalFromAnswer(row, question, String(params.answer));
+      const otherErrors = checks.filter((c) => c.kind === "DIAGNOSTIC" && c.outcome === "OTHER_ERROR").length;
+      if (otherErrors >= MAX_MISSED_CHECKS) {
+        // Two check questions in which the student answered something this idea does not predict: stop asking about it.
+        patch.status = "NOT_SUPPORTED";
+        patch.confidence = confidenceFor({ distinctQuestions: distinct, rivals, contradictedByFollowUp: true });
+      } else {
+        patch.status = "SUSPECTED"; // a different mistake: this question did not settle it
+      }
       patch.diagnosticQuestionId = null;
-      message = say(lang, "Thank you. That is not the answer yet.", "Salamat po. Hindi pa iyan ang sagot.");
+      message = rivalSupported
+        ? say(lang, "Thank you. That is not the answer yet, but it shows me how you are working it out.", "Salamat po. Hindi pa iyan ang sagot, pero nakita ko kung paano mo ito ginagawa.")
+        : say(lang, "Thank you. That is not the answer yet.", "Salamat po. Hindi pa iyan ang sagot.");
     }
   } else if (outcome === "CORRECT") {
     patch.status = "RESOLVED";
