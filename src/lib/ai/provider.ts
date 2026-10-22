@@ -17,6 +17,7 @@ export class GeminiAIProvider implements AIProvider {
   readonly name = "gemini";
   readonly defaultModel: string = "gemini-3.8-flash";
   private static quotaCooldownUntil = 0;
+  private static modelCoolUntil = new Map<string, number>();
   private ai: GoogleGenAI;
   private model: string;
 
@@ -31,6 +32,7 @@ export class GeminiAIProvider implements AIProvider {
 
   static resetQuotaCooldown(): void {
     GeminiAIProvider.quotaCooldownUntil = 0;
+    GeminiAIProvider.modelCoolUntil.clear();
   }
 
   async generateTutorResponse(request: TutorAIRequest): Promise<TutorAIResponseRaw> {
@@ -41,7 +43,10 @@ export class GeminiAIProvider implements AIProvider {
     // Models that think before answering spend part of the budget on thinking, so a small limit cuts the reply off.
     const maxOutputTokens = Math.max(request.maxTokens || 1024, 1500);
 
-    const timeoutMs = request.timeoutMs || 15000;
+    // A student is waiting, so cap each model and the whole request. A model that just timed out or answered 503 is
+    // skipped for a minute, so one busy model costs a single slow request instead of every request.
+    const timeoutMs = Math.min(request.timeoutMs || 15000, Number(process.env.AI_TUTOR_MODEL_TIMEOUT_MS) || 8000);
+    const deadline = Date.now() + (Number(process.env.AI_TUTOR_BUDGET_MS) || 12000);
     const modelsToTry = [this.model];
     if (!modelsToTry.includes("gemini-3.8-flash")) {
       modelsToTry.push("gemini-3.8-flash");
@@ -55,6 +60,9 @@ export class GeminiAIProvider implements AIProvider {
 
     let lastError: any = null;
     for (const modelToUse of modelsToTry) {
+      if ((GeminiAIProvider.modelCoolUntil.get(modelToUse) || 0) > Date.now()) continue;
+      if (deadline - Date.now() < 1500) break;
+      const attemptTimeoutMs = Math.min(timeoutMs, deadline - Date.now());
       try {
         const generatePromise = this.ai.models.generateContent({
           model: modelToUse,
@@ -68,7 +76,7 @@ export class GeminiAIProvider implements AIProvider {
         });
 
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`AI Tutor request timed out after ${timeoutMs / 1000} seconds.`)), timeoutMs)
+          setTimeout(() => reject(new Error(`AI Tutor request timed out after ${attemptTimeoutMs / 1000} seconds.`)), attemptTimeoutMs)
         );
 
         const response = await Promise.race([generatePromise, timeoutPromise]);
@@ -108,6 +116,9 @@ export class GeminiAIProvider implements AIProvider {
         lastError = err;
         const msg = String(err?.message || err || "");
         console.warn(`Gemini model ${modelToUse} failed:`, msg);
+        if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("timed out")) {
+          GeminiAIProvider.modelCoolUntil.set(modelToUse, Date.now() + 60_000);
+        }
         if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.toLowerCase().includes("quota")) {
           GeminiAIProvider.quotaCooldownUntil = Date.now() + 60_000;
           break;
