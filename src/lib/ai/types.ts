@@ -162,6 +162,8 @@ export interface AITutorContext {
   };
   sourcePriority?: string[];
   videoIntegrityBoundary?: string;
+  /** The lesson just before this one in the student's path and the titles of its own videos (nothing else), for "relearn" offers. */
+  previousLesson?: { title: string; videoTitles: string[] };
   requestedLanguage?: "fil" | "en";
   /** The lesson section the student has open, when the page told us. */
   currentSection?: { id: string; title: string; type: string };

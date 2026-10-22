@@ -81,6 +81,12 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
   const [tutorContext, setTutorContext] = useState<any>(null);
   // The video that is open (a lesson can have several supporting videos)
   const [openVideoKey, setOpenVideoKey] = useState<string | null>(null);
+  // The lesson just before this one, with only its own videos, and the "replay or go back?" question asked when a video ends
+  const [previousLesson, setPreviousLesson] = useState<any>(null);
+  const [videoOfferOpen, setVideoOfferOpen] = useState<boolean>(false);
+  // Videos open one at a time: the student sees the ones already reached, and the next appears after finishing the current one.
+  const [videoIndex, setVideoIndex] = useState<number>(0);
+  const [reviewVideo, setReviewVideo] = useState<{ youtubeId: string; title: string } | null>(null);
 
   const handleNav = (path: string) => {
     if (onNavigate) onNavigate(path);
@@ -138,6 +144,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
           if (sessionJson.data?.nextLesson) {
             setNextLessonInfo(sessionJson.data.nextLesson);
           }
+          setPreviousLesson(sessionJson.data?.previousLesson || null);
 
           // Build attempts dictionary
           const attMap: Record<string, any> = {};
@@ -338,6 +345,75 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
       });
     }
   }
+
+  const staffSeesAll = Boolean(access?.isStaffBypass);
+  const visibleVideos = staffSeesAll ? attachedVideos : attachedVideos.slice(0, videoIndex + 1);
+  const hasNextVideo = !staffSeesAll && videoIndex < attachedVideos.length - 1;
+
+  // The video finished (or the student says it did): the tutor asks whether to watch it again or go back a lesson.
+  const showVideoOffer = () => {
+    setVideoOfferOpen(true);
+    setIsAITutorOpen(true);
+  };
+  const videoOffer = videoOfferOpen
+    ? {
+        text:
+          "Natapos mo na ang video! Naintindihan mo ba? (Did the video make sense?)\n" +
+          (previousLesson
+            ? `Gusto mo bang panoorin ulit ito, o balikan ang naunang aralin, "${previousLesson.title}", para ulitin?`
+            : "Gusto mo bang panoorin ulit ito, o magpatuloy sa aralin?"),
+        actions: [
+          {
+            label: "Panoorin ulit ang video",
+            onClick: () => {
+              const key = attachedVideos[0]?.youtubeId || attachedVideos[0]?.url || null;
+              setVideoOfferOpen(false);
+              setIsAITutorOpen(false);
+              setOpenVideoKey(null);
+              setTimeout(() => setOpenVideoKey(key), 50);
+            },
+          },
+          ...(hasNextVideo
+            ? [
+                {
+                  label: "Susunod na video",
+                  onClick: () => {
+                    const next = attachedVideos[videoIndex + 1];
+                    setVideoIndex(videoIndex + 1);
+                    setVideoOfferOpen(false);
+                    setIsAITutorOpen(false);
+                    setOpenVideoKey(next?.youtubeId || next?.url || null);
+                  },
+                },
+              ]
+            : []),
+          ...(previousLesson
+            ? [
+                {
+                  label: "Balikan ang naunang aralin",
+                  onClick: () => handleNav(`/student/lessons/${previousLesson.lessonId}`),
+                },
+                ...(previousLesson.videos || []).slice(0, 2).map((v: any) => ({
+                  label: `Panoorin muna: ${String(v.title).replace(/^.*?:\s*/, "").slice(0, 38)}`,
+                  onClick: () => {
+                    setReviewVideo({ youtubeId: v.youtubeId, title: v.title });
+                    setVideoOfferOpen(false);
+                    setIsAITutorOpen(false);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  },
+                })),
+              ]
+            : []),
+          {
+            label: "Magpatuloy",
+            onClick: () => {
+              setVideoOfferOpen(false);
+              setIsAITutorOpen(false);
+            },
+          },
+        ],
+      }
+    : null;
 
   const handleNextSection = () => {
     if (activeSectionIndex < totalBlocks - 1) {
@@ -583,9 +659,10 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
               <span className="text-[10px] font-bold uppercase tracking-wider text-red-700 block">
                 Supportive Video Tutorial{attachedVideos.length > 1 ? "s" : ""} • Mathisipan
+                {attachedVideos.length > 1 && !staffSeesAll ? ` • Video ${videoIndex + 1} of ${attachedVideos.length}` : ""}
               </span>
               <ul className="space-y-3">
-                {attachedVideos.map((video: any) => {
+                {visibleVideos.map((video: any) => {
                   const key = video.youtubeId || video.url;
                   const isOpen = openVideoKey === key;
                   return (
@@ -623,13 +700,35 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
                             url={video.url}
                             title={video.title}
                             description={video.notes}
+                            onEnded={showVideoOffer}
                           />
+                          <button
+                            type="button"
+                            onClick={showVideoOffer}
+                            className="mt-2 text-xs font-semibold text-teal-700 underline hover:text-teal-900"
+                          >
+                            Tapos na akong manood / I finished watching
+                          </button>
                         </div>
                       )}
                     </li>
                   );
                 })}
               </ul>
+            </div>
+          )}
+
+          {reviewVideo && (
+            <div className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4 space-y-3" data-testid="review-video">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                  Review from the previous lesson{previousLesson?.title ? `: ${previousLesson.title}` : ""}
+                </span>
+                <button type="button" onClick={() => setReviewVideo(null)} className="text-xs font-semibold text-slate-600 underline">
+                  Close
+                </button>
+              </div>
+              <YouTubeVideo videoId={reviewVideo.youtubeId} title={reviewVideo.title} compact />
             </div>
           )}
 
@@ -911,6 +1010,7 @@ export default function StudentLessonPage({ lessonId, onNavigate }: StudentLesso
           }
         }
         initialHelpLevel="CONCEPT_EXPLANATION"
+        offer={videoOffer}
       />
     </div>
   );

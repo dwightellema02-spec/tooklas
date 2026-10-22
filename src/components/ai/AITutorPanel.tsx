@@ -49,6 +49,8 @@ export interface AITutorPanelProps {
     blockId?: string;
   };
   initialHelpLevel?: AITutorHelpLevel;
+  /** A question the lesson page puts in the chat on the tutor's behalf, with buttons (e.g. replay the video or go back a lesson). */
+  offer?: { text: string; actions: { label: string; onClick: () => void }[] } | null;
 }
 
 export function AITutorPanel({
@@ -56,6 +58,7 @@ export function AITutorPanel({
   onClose,
   context,
   initialHelpLevel = "LEVEL_1_HINT",
+  offer = null,
 }: AITutorPanelProps) {
   const [messages, setMessages] = useState<TutorMessageDTO[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
@@ -570,6 +573,26 @@ export function AITutorPanel({
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px] flex items-start gap-2">
                 <AlertCircle className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
                 <p>Basic tutor mode: the AI model is busy, so this answer uses the built-in tutor. It still follows your lesson, but it is simpler.</p>
+              </div>
+            )}
+
+            {offer && (
+              <div className="flex flex-col items-start" data-testid="tutor-offer">
+                <div className="max-w-[90%] rounded-2xl rounded-bl-md bg-white border border-emerald-200 p-3 text-xs text-slate-800 space-y-2 shadow-2xs">
+                  <p className="whitespace-pre-line leading-relaxed">{offer.text}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {offer.actions.map((a) => (
+                      <button
+                        key={a.label}
+                        type="button"
+                        onClick={a.onClick}
+                        className="px-2.5 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold hover:bg-emerald-100 min-h-[34px]"
+                      >
+                        {a.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 

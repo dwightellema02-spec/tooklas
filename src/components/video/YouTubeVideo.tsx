@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Youtube, ExternalLink, ShieldCheck, Sparkles, Play } from "lucide-react";
 import { YOUTUBE_CONFIG } from "@/config/youtube";
 import { parseYouTubeUrl } from "@/lib/youtube/youtube-parser";
@@ -10,6 +10,8 @@ export interface YouTubeVideoProps {
   channelName?: string;
   description?: string;
   onVideoOpened?: () => void;
+  /** Called once when the video plays to its end. */
+  onEnded?: () => void;
   className?: string;
   compact?: boolean;
 }
@@ -21,10 +23,32 @@ export function YouTubeVideo({
   channelName = "Mathisipan",
   description,
   onVideoOpened,
+  onEnded,
   className = "",
   compact = false,
 }: YouTubeVideoProps) {
   const [hasInteracted, setHasInteracted] = useState(false);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const endedRef = useRef(onEnded);
+  endedRef.current = onEnded;
+
+  // The embedded player reports its state to the page once it is asked to (enablejsapi=1 and a "listening" message), so the
+  // end of the video can be seen without loading YouTube's script, which the page's content-security policy does not allow.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (!frameRef.current || e.source !== frameRef.current.contentWindow || typeof e.data !== "string") return;
+      try {
+        const d = JSON.parse(e.data);
+        if ((d.event === "onStateChange" && d.info === 0) || (d.event === "infoDelivery" && d.info?.playerState === 0)) {
+          endedRef.current?.();
+        }
+      } catch {
+        /* not a player message */
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   // Resolve videoId either from prop or by parsing url
   let resolvedVideoId = initialVideoId;
@@ -43,7 +67,7 @@ export function YouTubeVideo({
     );
   }
 
-  const embedUrl = `${YOUTUBE_CONFIG.mathisipan.embedBaseUrl}/${resolvedVideoId}?rel=0&modestbranding=1`;
+  const embedUrl = `${YOUTUBE_CONFIG.mathisipan.embedBaseUrl}/${resolvedVideoId}?rel=0&modestbranding=1&enablejsapi=1`;
   const canonicalWatchUrl = `${YOUTUBE_CONFIG.mathisipan.youtubeBaseUrl}/watch?v=${resolvedVideoId}`;
 
   const handleInteraction = () => {
@@ -99,6 +123,8 @@ export function YouTubeVideo({
       {/* Embedded Video Player Container */}
       <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 shadow-inner border border-slate-900/10">
         <iframe
+          ref={frameRef}
+          onLoad={() => frameRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*")}
           src={embedUrl}
           title={title}
           loading="lazy"

@@ -1278,11 +1278,30 @@ app.get("/api/student/lessons/:id/session", async (req: Request, res: Response) 
       console.warn("Failed to compute next eligible lesson on get session:", pathErr);
     }
 
+    // The lesson just before this one in the path, with only its own videos: what a student is offered to relearn.
+    // Never the whole video library.
+    let previousLessonInfo: any = null;
+    try {
+      const pathData = await dbService.getStudentLearningPath(userId);
+      const idx = pathData.learningPath.findIndex((n: any) => n.lessonId === id);
+      if (idx > 0) {
+        const prev: any = pathData.learningPath[idx - 1];
+        const prevLesson: any = await dbService.getLessonById(prev.lessonId);
+        const videos = ((prevLesson?.resources || []) as any[])
+          .filter((r) => r.type === "YOUTUBE" && r.youtubeId)
+          .map((r) => ({ youtubeId: r.youtubeId, title: r.title }));
+        previousLessonInfo = { lessonId: prev.lessonId, title: prev.title, videos };
+      }
+    } catch (prevErr) {
+      console.warn("Failed to find the previous lesson on get session:", prevErr);
+    }
+
     return res.json({
       data: {
         session: lessonSession,
         attempts,
         nextLesson: nextLessonInfo,
+        previousLesson: previousLessonInfo,
       },
     });
   } catch (error: unknown) {

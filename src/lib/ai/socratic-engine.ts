@@ -412,7 +412,12 @@ export function socraticResponse(rawCtx: AITutorContext): EngineReply {
         hintLevel: 3,
         detectedIssue: flipped ? "SIGN_ERROR" : "NONE",
         suggestedAction: wrongCount >= 4 ? "ASK_TEACHER" : "REVIEW_CONCEPT",
-        nextStep: t("Kung nahihirapan ka pa rin, itanong ito sa guro mo.", "If you are still stuck, ask your teacher."),
+        nextStep: ctx.previousLesson
+          ? t(
+              `Gusto mo bang panoorin ulit ang video ng araling ito, o balikan ang naunang aralin, "${ctx.previousLesson.title}", para ulitin? Kung nahihirapan ka pa rin, itanong ito sa guro mo.`,
+              `Would you like to watch this lesson's video again, or go back to the previous lesson, "${ctx.previousLesson.title}", to relearn it? If you are still stuck, ask your teacher.`
+            )
+          : t("Kung nahihirapan ka pa rin, itanong ito sa guro mo.", "If you are still stuck, ask your teacher."),
         encouragement: t("Ang pagtitiyaga mo ang magdadala sa iyo roon.", "Your persistence will get you there."),
       });
     }

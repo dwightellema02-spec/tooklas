@@ -507,6 +507,26 @@ export async function buildAITutorContext(params: AITutorInteractParams): Promis
   const videoIntegrityBoundary =
     "Verified metadata and teacher notes are available for Mathisipan video resources. However, NO machine-readable video transcript is ingested into the system. You MUST NOT claim to have watched the video. Ground your answers in lesson text and teacher notes.";
 
+  // 11b. The lesson just before this one, so the tutor can offer to relearn it. Only that lesson and its own videos.
+  let previousLesson: AITutorContext["previousLesson"];
+  if (targetLessonId) {
+    try {
+      const path = await dbService.getStudentLearningPath(student.id);
+      const at = path.learningPath.findIndex((n: any) => n.lessonId === targetLessonId);
+      if (at > 0) {
+        const prev: any = path.learningPath[at - 1];
+        const prevFull: any = await dbService.getLessonById(prev.lessonId);
+        const videoTitles = ((prevFull?.resources || []) as any[]).filter((r) => r.type === "YOUTUBE").map((r) => String(r.title)).slice(0, 3);
+        previousLesson = { title: String(prev.title), videoTitles };
+      }
+    } catch (e) {
+      console.warn("Finding the previous lesson for the tutor failed:", e);
+    }
+  }
+  const relearnRule = previousLesson
+    ? ` The lesson before this one is "${previousLesson.title}"${previousLesson.videoTitles.length ? ` (its videos: ${previousLesson.videoTitles.map((v) => `"${v}"`).join("; ")})` : ""}. If the student says they did not understand, finished the video and is still lost, or keeps getting the same kind of question wrong, ask them whether they would rather watch this lesson's video again or go back to that previous lesson to relearn it. Offer only that lesson and its own videos, never a list of other lessons or videos.`
+    : "";
+
   // 12. Multilingual & Language Preference Detection
   const requestedLanguage = detectLanguagePreference(studentQuery, recentMessages);
 
@@ -560,7 +580,8 @@ export async function buildAITutorContext(params: AITutorInteractParams): Promis
     groundedLesson,
     adaptiveRecommendation,
     sourcePriority,
-    videoIntegrityBoundary,
+    videoIntegrityBoundary: videoIntegrityBoundary + relearnRule,
+    previousLesson,
     requestedLanguage,
     currentSection,
     checkpointHistory,

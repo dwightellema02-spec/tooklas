@@ -153,6 +153,13 @@ console.log("\n5. Fallback tutor: what it does with the student's work");
   t("third wrong answer: the method is explained fully with the lesson example, still no answer", w3.hintLevel === 3 && /200/.test(w3.message) && !/\b25\b(?!\s*%\.)/.test(w3.message.replace(/0\.25|25%/g, "")) , text(w3));
   t("third wrong answer suggests reviewing the concept", w3.suggestedAction === "REVIEW_CONCEPT", w3.suggestedAction);
 
+  const prior = { title: "Percentage decrease", videoTitles: ["Percentage Decrease | MATATAG"] };
+  const w3p = socraticResponse(ctx({ studentAnswer: "20", previousAttempts: [attempt("20", 1), attempt("20", 2), attempt("20", 3)], studentQuery: "20 pa rin", helpLevel: "LEVEL_2_HINT", previousLesson: prior }));
+  t("when stuck, the tutor offers this lesson's video again or the previous lesson", /Percentage decrease/.test(w3p.nextStep || "") && /video/i.test(w3p.nextStep || ""), w3p.nextStep);
+  t("without a previous lesson it only suggests the teacher", !/video/i.test(w3.nextStep || ""), w3.nextStep);
+  const w1p = socraticResponse(ctx({ studentAnswer: "20", previousAttempts: [attempt("20", 1)], helpLevel: "LEVEL_1_HINT", previousLesson: prior }));
+  t("on the first wrong answer it does not push the student back a lesson", !/Percentage decrease/.test(text(w1p)), text(w1p));
+
   const slip = socraticResponse(ctx({
     question: { id: "q3", type: "NUMERIC_INPUT", prompt: "4 interior angles of a pentagon are 100°, 110°, 120°, 90°. What is the missing angle?", difficulty: "MEDIUM", expectedAnswer: "120", source: "practice" },
     studentAnswer: "110",
