@@ -1124,6 +1124,17 @@ app.get("/api/student/learning-path", async (req: Request, res: Response) => {
       targetUserId = session.userId;
     }
     const pathData = await dbService.getStudentLearningPath(targetUserId);
+    // Staff looking at their own path are checking the lessons, not learning them, so no lesson is locked for them
+    // (getLessonAccess already lets them open any lesson). A teacher viewing a student's path sees that student's real locks.
+    if (session.role !== "STUDENT" && targetUserId === session.userId && Array.isArray(pathData?.learningPath)) {
+      for (const node of pathData.learningPath as any[]) {
+        if (node.state === "LOCKED") {
+          node.state = "AVAILABLE";
+          node.staffPreviewUnlocked = true;
+          node.unlockGate = null;
+        }
+      }
+    }
     return res.json({ data: pathData });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to load learning path";
@@ -1258,7 +1269,7 @@ app.get("/api/student/lessons/:id/session", async (req: Request, res: Response) 
             lessonId: nextCandidate.lessonId,
             title: nextCandidate.title,
             state: nextCandidate.state,
-            eligible: nextCandidate.state === "AVAILABLE" || nextCandidate.state === "IN_PROGRESS",
+            eligible: session.role !== "STUDENT" || nextCandidate.state === "AVAILABLE" || nextCandidate.state === "IN_PROGRESS",
             lockReasons: nextCandidate.lockReasons || [],
           };
         }
@@ -1320,7 +1331,7 @@ app.post("/api/student/lessons/:id/session", async (req: Request, res: Response)
               lessonId: nextCandidate.lessonId,
               title: nextCandidate.title,
               state: nextCandidate.state,
-              eligible: nextCandidate.state === "AVAILABLE" || nextCandidate.state === "IN_PROGRESS",
+              eligible: session.role !== "STUDENT" || nextCandidate.state === "AVAILABLE" || nextCandidate.state === "IN_PROGRESS",
               lockReasons: nextCandidate.lockReasons || [],
             };
           }
